@@ -1,0 +1,7 @@
+#!/bin/sh -e 
+
+# run with an archive and then a directory to install it into
+
+tar xf "$1" -C "$2" .
+
+# Yes, really, that's it.

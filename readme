@@ -1,3 +1,5 @@
 ata
 
-package manager that co-exists with an existing operating system. no root required
+package manager that co-exists with an existing operating system. no root required.
+
+prioritises static builds wherever possible

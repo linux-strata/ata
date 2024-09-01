@@ -1,0 +1,48 @@
+#!/bin/sh -e
+
+# run in dir where the package is
+
+# $1 - pkg name
+# $2 - pkg version
+
+name=$1
+ver=$2
+
+# build gets the following parameters
+# $1 - DESTDIR
+# $2 - package name
+# $3 - package version
+
+export ATA_TREE="${ATA_TREE:-$HOME/code/ata/tree}"
+export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
+
+build_loc=/tmp/ata-building-$$
+install_loc=/tmp/ata-target-$$
+
+mkdir -p "$build_loc"
+mkdir -p "$install_loc/$name/$ver/pkg"
+
+while read -r src; do
+    wget "$src" -P "$build_loc"
+done < sources 
+
+cp ./* "$install_loc/$name/$ver/pkg"
+
+cp ./* "$build_loc"
+pkg_dir=$PWD
+cd "$build_loc"
+
+for file in ./*.tar.*;do
+    tar xf $file
+done
+
+./build "$install_loc" "$name" "$ver"
+
+cd "$install_loc"
+# use patchelf here 
+# create symlinks ala distri here
+# every package needs to have a /lib to contrast /usr/lib
+# maybe even a /include?
+# -nostdinc -I each one should be ok, not required at runtime
+# -Wl,-rpath=$prefix/pkg/ver/lib 
+tar czf "$pkg_dir/$ver.tar.gz" ./*

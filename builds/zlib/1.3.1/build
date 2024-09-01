@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo PWD PWD PWD PWD $PWD
+export CFLAGS="-D_GNU_SOURCE -nostdinc -isystem $ATA_TREE/musl/1.2.5/usr/include -nostdlib -Wl,-rpath=$ATA_TREE/musl/1.2.5/usr/lib -I$ATA_TREE/musl/1.2.5/usr/include"
+export LD_LIBRARY_PATH="$ATA_TREE/musl/1.2.5/usr/lib/"
+export LDFLAGS="-dynamic-linker $ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1 -nostdlib -L$ATA_TREE/musl/1.2.5/usr/lib -nodefaultlibs"
+echo 2 3 $2-$3
+cd "$2-$3"
+echo PWD PWD PWD PWD $PWD
+./configure \
+    --prefix="/$2/$3/usr"
+    
+make
+make DESTDIR="$1" install

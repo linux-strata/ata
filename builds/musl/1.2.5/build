@@ -1,0 +1,9 @@
+#!/bin/sh
+
+cd "$2-$3"
+./configure \
+    --prefix="/$2/$3/usr" \
+    --libdir="/$2/$3/usr/lib" \
+    --syslibdir="/$2/$3/usr/lib"
+make
+make DESTDIR="$1" install
