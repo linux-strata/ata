@@ -1,11 +1,5 @@
 #!/bin/sh
 
-cd "$2-$3"
-export C_INCLUDE_PATH=-"$ATA_TREE/musl/1.2.5/usr/include:$ATA_TREE/zlib/1.3.1/usr/include"
-export CFLAGS="-D_GNU_SOURCE -nostdinc -isystem $ATA_TREE/musl/1.2.5/usr/include -nostdlib -Wl,-rpath=$ATA_TREE/musl/1.2.5/usr/lib,-rpath=$ATA_TREE/zlib/1.3.1/usr/lib"
-export LD_LIBRARY_PATH="$ATA_TREE/musl/1.2.5/usr/lib/:$ATA_TREE/zlib/1.3.1/usr/lib"
-export LDFLAGS="-dynamic-linker $ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1 -nostdlib -L$ATA_TREE/musl/1.2.5/usr/lib -nodefaultlibs -L$ATA_TREE/zlib/1.3.1/usr/lib"
-
-
-make "CFLAGS=$CFLAGS" "LDFLAGS=$LDFLAGS"
-make DESTDIR="$1" install 
+#gcc $CFLAGS --print-search-dirs
+make LDFLAGS="$LDFLAGS -L$ATA_TREE/zlib/1.3.1/usr/lib"
+make install 
