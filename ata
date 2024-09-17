@@ -93,10 +93,12 @@ main () {
         done < "$ATA_SRC_REPO/$pkg/$ver/sources"
         
         cp "$ATA_SRC_REPO/$pkg/$ver"/build "$build_dir"
-        
-        CFLAGS="-nostdinc -nostdlib -nodefaultlibs -Wl,-rpath=$ATA_TREE/$pkg/$ver/lib -L$ATA_TREE/$pkg/$ver/lib"
+
+        if [ ! $pkg = musl ]; then        
+        CFLAGS="-nostdinc -nostdlib -nodefaultlibs -L$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1"
         LD_LIBRARY_PATH="$ATA_TREE/$pkg/$ver/lib"
-        LDFLAGS="--verbose -nostdlib -nodefaultlibs -L$ATA_TREE/$pkg/$ver/lib -dynamic-linker $ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1"
+        LDFLAGS="-nostdlib -L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1 -lc"
+        fi
         
         if [ -f "$ATA_SRC_REPO/$pkg/$ver/needs" ]; then
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
@@ -115,12 +117,12 @@ main () {
         p '*link_libgcc:' > /tmp/ata-gcc.specs
         p "-L$ATA_TREE/$pkg/$ver/lib" >> /tmp/ata-gcc.specs
         
-        env -i CFLAGS="$CFLAGS -specs=/tmp/ata-gcc.specs" PATH=$PATH ATA_TREE=$ATA_TREE LD_LIBRARY_PATH=$LD_LIBRARY_PATH C_INCLUDE_PATH=$C_INCLUDE_PATH ./build null "$pkg" "$ver"
+        
+        env -i CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="$C_INCLUDE_PATH" ./build null "$pkg" "$ver"
     ;;
     *)
         err "$1 not implemented"
     ;; 
     esac
 }
-main "$@" 
-
+main "$@"

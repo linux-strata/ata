@@ -1,5 +1,5 @@
 #!/bin/sh
 
-#gcc $CFLAGS --print-search-dirs
-make LDFLAGS="$LDFLAGS -L$ATA_TREE/zlib/1.3.1/usr/lib"
+
+make LDFLAGS="$LDFLAGS" CFLAGS="$CFLAGS" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" CC=musl-gcc
 make install 

@@ -1,0 +1,7 @@
+#!/bin/sh
+
+./configure \
+    --prefix="$ATA_TREE/$2/$3/usr"
+    
+make 
+make install
