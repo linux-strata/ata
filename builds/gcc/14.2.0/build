@@ -1,0 +1,23 @@
+#!/bin/sh
+
+mkdir -p gcc-build
+cd gcc-build
+
+../gcc/configure \
+    --prefix="$ATA_TREE/$2/$3/usr" \
+    --enable-__cxa_atexit \
+    --enable-default-pie \
+    --enable-default-ssp \
+    --enable-shared \
+    --enable-threads \
+    --enable-tls \
+    --enable-initfini-array \
+    --enable-languages=c,c++ \
+    --without-included-gettext \
+    --with-zstd=no \
+    --with-system-zlib \
+    --host=x86_64-pc-linux-gnu \
+    --build=x86_64-pc-linux-musl
+
+make
+make install
