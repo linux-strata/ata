@@ -27,11 +27,14 @@ p () {
 }
 
 pd () {
-  printf "%s\n" "$1" >&"${2:-1}"
+    printf "%s\n" "$1" >&"${2:-1}"
 }
 
-err () {
+log () { 
     pd "ata: $@" 2
+}
+err () {
+    log "$@"
     exit 1
 }
 
@@ -64,9 +67,11 @@ download_file () {
     dir="$XDG_CACHE_HOME/ata/$2"
     mkdir -p "$dir"
     if [ -e "$dir/$3" ]; then
-        pd "$3 cached" 2
+        log "$3 cached"
     else
-        curl "$1" -sSo "$dir/$3"
+        log "downloading $3"
+        log "URL: $1"
+        curl "$1" -sSLo "$dir/$3"
     fi
     p "$dir/$3"
 }
@@ -87,18 +92,13 @@ main () {
         build_dir=/tmp/ata-build-$$
         mkdir -p "$build_dir"
         
-        while read -r url; do
+        while read -r url dir; do
+            extract_to=$build_dir
             f=$(download_file "$url" "$pkg-$ver" "$(filename_from_url $url)")
-            tar xf "$f" --strip-components 1 -C "$build_dir"
+            [ -z "$dir" ] || extract_to="$build_dir/$dir"
+            mkdir -p "$extract_to"
+            tar xf "$f" --strip-components 1 -C "$extract_to"
         done < "$ATA_SRC_REPO/$pkg/$ver/sources"
-        
-        cp "$ATA_SRC_REPO/$pkg/$ver"/build "$build_dir"
-
-        if [ ! $pkg = musl ]; then        
-        CFLAGS="-nostdinc -nostdlib -nodefaultlibs -L$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1"
-        LD_LIBRARY_PATH="$ATA_TREE/$pkg/$ver/lib"
-        LDFLAGS="-nostdlib -L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl/1.2.5/usr/lib/ld-musl-x86_64.so.1 -lc"
-        fi
         
         if [ -f "$ATA_SRC_REPO/$pkg/$ver/needs" ]; then
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
@@ -114,15 +114,25 @@ main () {
         fi
         
         cd "$build_dir"
-        p '*link_libgcc:' > /tmp/ata-gcc.specs
-        p "-L$ATA_TREE/$pkg/$ver/lib" >> /tmp/ata-gcc.specs
         
+        if [ $pkg != musl-cross-make ]; then 
+            export CC=x86_64-linux-musl-cc
+            export CXX=x86_64-linux-musl-c++
+            
+            export PATH=$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH
+            CFLAGS="-L$ATA_TREE/$pkg/$ver/lib $CFLAGS"
+            export LDFLAGS="-L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
+        fi
         
-        env -i CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="$C_INCLUDE_PATH" ./build null "$pkg" "$ver"
+        time1=$(date +%s)
+        env -i CC=$CC CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS=${MAKEFLAGS:--j10} LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
+        time2=$(date +%s)
+        s=$((time2 - time1))
+        log "build completed in ${s}s"
     ;;
     *)
         err "$1 not implemented"
-    ;; 
+    ;;
     esac
 }
 main "$@"

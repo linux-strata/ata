@@ -1,0 +1,21 @@
+#!/bin/sh
+
+cat > config.mak << EOF
+TARGET = x86_64-linux-musl
+OUTPUT = $ATA_TREE/$2/$3/usr
+COMMON_CONFIG += --disable-nls
+COMMON_CONFIG += --prefix=$ATA_TREE/$2/$3/usr
+EOF
+mkdir -p $ATA_TREE/$2/$3/usr/
+
+(cd $ATA_TREE/$2/$3/usr
+    mkdir -p lib
+    ln -sf . x86_64-linux-musl 
+    ln -sf . usr 
+    ln -sf lib lib64
+)
+
+make
+make install
+cd $ATA_TREE/$2/$3/usr/lib
+ln -sf libc.so ld-musl-x86_64.so.1

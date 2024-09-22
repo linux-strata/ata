@@ -4,5 +4,5 @@
     --prefix="$ATA_TREE/$2/$3/usr" \
     --disable-nls
 
-make 
+make
 make install
