@@ -5,6 +5,8 @@ TARGET = x86_64-linux-musl
 OUTPUT = $ATA_TREE/$2/$3/usr
 COMMON_CONFIG += --disable-nls
 COMMON_CONFIG += --prefix=$ATA_TREE/$2/$3/usr
+COMMON_CONFIG += --libdir=$ATA_TREE/$2/$3/usr/lib
+
 EOF
 mkdir -p $ATA_TREE/$2/$3/usr/
 
@@ -17,5 +19,5 @@ mkdir -p $ATA_TREE/$2/$3/usr/
 
 make
 make install
-cd $ATA_TREE/$2/$3/usr/lib
-ln -sf libc.so ld-musl-x86_64.so.1
+
+ln -sf libc.so $ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1

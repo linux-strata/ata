@@ -1,0 +1,19 @@
+#!/bin/sh
+
+export CFLAGS="$CFLAGS -fPIC" # bearssl doesn't build without PIC
+base=$ATA_TREE/$2/$3/usr
+
+make \
+    CC="$CC" \
+    CFLAGS="$CFLAGS" \
+    LD="$CC" \
+    LDFLAGS="$LDFLAGS $CFLAGS" \
+    LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+    LDDLL="$CC" \
+    LDDLLFLAGS="$CFLAGS $LDFLAGS -shared -Wl,-soname,libbearssl.so"
+
+mkdir -p "$base/bin" "$base/include" "$base/lib"
+cp -f build/brssl "$base/bin"
+cp -f inc/* "$base/include"
+cp -f build/libbearssl.a "$base/lib"
+cp -f build/libbearssl.so "$base/lib"

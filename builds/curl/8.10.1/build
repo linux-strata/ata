@@ -1,0 +1,16 @@
+#!/bin/sh
+
+./configure \
+    --prefix=$ATA_TREE/$2/$3/usr \
+    --enable-ipv6 \
+    --with-pic \
+    --with-bearssl \
+    --without-icu \
+    --without-libpsl \
+    --without-libidn \
+    --without-libidn2 \
+    --without-brotli \
+    --without-zstd
+
+make
+make install

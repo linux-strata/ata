@@ -1,0 +1,21 @@
+#!/bin/sh
+
+make CC="$CC $CFLAGS $LDFLAGS" -f Makefile-libbz2_so # bzip doesn't respect $CFLAGS or $LDFLAGS
+make CC="$CC $CFLAGS $LDFLAGS" bzip2
+
+base=$ATA_TREE/$2/$3/usr
+mkdir -p "$base/bin" "$base/lib" "$base/include" "$base/share/man/man1"
+
+cp -f  bzip2 bzdiff bzgrep bzmore "$base/bin"
+ln -sf bzip2 "$base/bin/bunzip2"
+ln -sf bzip2 "$base/bin/bzcat"
+
+cp -f libbz2.so.1.0.8 libbz2.a "$base/lib"
+
+ln -sf libbz2.so.1.0.8 "$base/lib/libbz2.so"
+ln -sf libbz2.so.1.0.8 "$base/lib/libbz2.so.1"
+ln -sf libbz2.so.1.0.8 "$base/lib/libbz2.so.1.0"
+
+cp -f bzip2.1 "$base/share/man/man1"
+cp -f bzlib.h "$base/include"
+

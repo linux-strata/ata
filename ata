@@ -104,7 +104,8 @@ main () {
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
                 for f in "$ATA_TREE/$dep"/usr/lib/*; do
-                    # Reduce the size of RPATH, and cause 
+                    # Reduce the size of RPATH
+                    # see https://github.com/distr1/distri/commit/19f3
                     ln -sf "$f" "$ATA_TREE/$pkg/$ver/lib"
                 done
                 # CFLAGS need to be generated.
@@ -125,7 +126,7 @@ main () {
         fi
         
         time1=$(date +%s)
-        env -i CC=$CC CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS=${MAKEFLAGS:--j10} LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
+        env -i CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS=${MAKEFLAGS:--j10} LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
         time2=$(date +%s)
         s=$((time2 - time1))
         log "build completed in ${s}s"
