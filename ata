@@ -23,22 +23,28 @@ export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
 # no dependency resolution at the moment 
 
 p () {
+    # p ( str... )
     printf "%s\n" "$@"
 }
 
 pd () {
+    # pd ( str, [fd]:-1 )
     printf "%s\n" "$1" >&"${2:-1}"
 }
 
-log () { 
+log () {
+    # log ( str... )
     pd "ata: $@" 2
 }
+
 err () {
+    # err ( str... )
     log "$@"
     exit 1
 }
 
 dir_first () {
+    # dir_first ( path )
     for file in "$1"/*;do
         p "${file#$1/}"
         return 0
@@ -46,6 +52,7 @@ dir_first () {
 }
 
 filename_from_url () {
+    # filename_from_url ( url )
     old_ifs=$IFS
     IFS='/'
     set -f
@@ -63,17 +70,89 @@ filename_from_url () {
 # this will be replaced with a checksum system in future
 
 download_file () {
+    # download_file( url, pkg-ver )
+    # if http:
+    # extract filename
+    # 
     : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+    
     dir="$XDG_CACHE_HOME/ata/$2"
     mkdir -p "$dir"
-    if [ -e "$dir/$3" ]; then
-        log "$3 cached"
-    else
-        log "downloading $3"
-        log "URL: $1"
-        curl "$1" -sSLo "$dir/$3"
-    fi
-    p "$dir/$3"
+
+    log "URL: $1"
+    case $1 in
+        git://*)
+            # git://git.com/repo@commit
+            url=${1%@*}
+            commit=${1#*@}
+            destination=$(filename_from_url "$url")
+            destination="${destination}@${commit}"
+            if [ -d "${dir}/${destination}" ]; then
+                log "$destination already cloned, skipping"
+            else
+                log "cloning $url"
+                git clone --progress "$url" "$dir/$destination" >&2
+                log "getting commit $commit"
+                (cd "$dir/$destination"; git reset --hard "$commit") >&2
+            fi
+         ;;
+        http[s]://*)
+            destination=$(filename_from_url "$1")
+            if [ -f "$dir/$destination" ]; then
+                log "$destination already downloaded, skipping"
+            else
+                log "downloading $destination"
+                curl "$1" -sSLo "$dir/$destination"
+            fi
+        ;;
+        *://*)
+            err "scheme in $1 not supported"
+        ;;
+        *)
+            log "no scheme, assuming file"
+            [ -f "$1" ] || err "$1 not file"
+            destination=$1
+        ;;
+    esac
+    p "$dir/$destination"
+}
+
+copy_to () {
+    # copy_to ( path, dest )
+    # download_file -> copy_to
+  
+    # if its an archive, extract it
+    # if it's a directory, copy the files
+    case $1 in
+        *.tar*)
+            # NB. not very robust checking: anything is a valid file extension
+            # in practice, .tgz, .tbz2, etc can be found
+            log "extracting $1"
+            tar xf "$1" --strip-components 1 -C "$2"
+            # NB. --strip-components is not always present
+        ;;
+        *)
+            if [ -d "$1" ]; then
+                log "copying dir $1"
+                cp -r "$1/." "$2" 
+            else
+                log "copying file $1"
+                cp -f "$1" "$2"
+            fi
+        ;;
+    esac     
+}
+
+setup_build_dir () {
+    # setup_build_dir ( dir )
+    while read -r url dir; do
+        extract_to=$build_dir
+        f=$(download_file "$url" "$pkg-$ver")
+        [ -z "$dir" ] || extract_to="$build_dir/$dir"
+        mkdir -p "$extract_to"
+        copy_to "$f" "$extract_to"
+    done < "$ATA_SRC_REPO/$pkg/$ver/sources"
+        
 }
 
 main () {
@@ -85,24 +164,15 @@ main () {
         [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
         [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
         [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
-        
+        log "building $pkg/$ver"
         for f in build sources; do
             [ -f "$ATA_SRC_REPO/$pkg/$ver/$f" ] || err "$pkg/$ver: no $f file"
         done
-        build_dir=/tmp/ata-build-$$
-        mkdir -p "$build_dir"
-        
-        while read -r url dir; do
-            extract_to=$build_dir
-            f=$(download_file "$url" "$pkg-$ver" "$(filename_from_url $url)")
-            [ -z "$dir" ] || extract_to="$build_dir/$dir"
-            mkdir -p "$extract_to"
-            tar xf "$f" --strip-components 1 -C "$extract_to"
-        done < "$ATA_SRC_REPO/$pkg/$ver/sources"
-        
+
         if [ -f "$ATA_SRC_REPO/$pkg/$ver/needs" ]; then
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
+                [ -e "$ATA_TREE/$dep" ] || err "dependency $dep not found"
                 for f in "$ATA_TREE/$dep"/usr/lib/*; do
                     # Reduce the size of RPATH
                     # see https://github.com/distr1/distri/commit/19f3
@@ -114,8 +184,6 @@ main () {
             done < "$ATA_SRC_REPO/$pkg/$ver/needs"
         fi
         
-        cd "$build_dir"
-        
         if [ $pkg != musl-cross-make ]; then 
             export CC=x86_64-linux-musl-cc
             export CXX=x86_64-linux-musl-c++
@@ -125,7 +193,14 @@ main () {
             export LDFLAGS="-L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         fi
         
+        build_dir=/tmp/ata-build-$$
+        mkdir -p "$build_dir"
+        log "setting up build in $build_dir"
+        setup_build_dir "$build_dir"
+        cd "$build_dir"
+        
         time1=$(date +%s)
+        log "starting build"
         env -i CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS=${MAKEFLAGS:--j10} LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
         time2=$(date +%s)
         s=$((time2 - time1))
