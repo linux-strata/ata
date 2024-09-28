@@ -1,0 +1,9 @@
+#!/bin/sh
+
+./configure --no-thanks
+
+base="$ATA_TREE/$2/$3/usr"
+
+make
+make PREFIX="$base" BINDIR="$base/bin" MANDIR="$base/share/man" install
+ln -sf oksh "$base/bin/sh" 

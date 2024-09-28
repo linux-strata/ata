@@ -4,6 +4,7 @@
 
 export ATA_TREE="${ATA_TREE:-$HOME/code/ata/tree}"
 export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
+export ATA_WORLDS="${ATA_WORLDS:-$HOME/code/ata/worlds}"
 
 # currently, ata operates with a single repo and a single tree
 # the directory in ATA_SRC_REPO contains source packages
@@ -34,7 +35,7 @@ pd () {
 
 log () {
     # log ( str... )
-    pd "ata: $@" 2
+    pd "ata: $*" 2
 }
 
 err () {
@@ -56,6 +57,7 @@ filename_from_url () {
     old_ifs=$IFS
     IFS='/'
     set -f
+    #shellcheck disable=SC2048,SC2086
     set -- $*
     
     for a in "$@"; do
@@ -95,7 +97,7 @@ download_file () {
                 log "getting commit $commit"
                 (cd "$dir/$destination"; git reset --hard "$commit") >&2
             fi
-         ;;
+        ;;
         http[s]://*)
             destination=$(filename_from_url "$1")
             if [ -f "$dir/$destination" ]; then
@@ -155,6 +157,19 @@ setup_build_dir () {
         
 }
 
+
+recursive_file_merge () {
+    # recursive_file_merge ( source, destination )
+    # create a recursive link between two directories.
+    # mirror created directories, softlink files.
+    (cd "$1"
+        find . -type d -exec mkdir -p "$2/{}" \;
+        find . -type l -exec ln -s "$1/{}" "$2/{}" \;
+        find . -type f -exec ln -s "$1/{}" "$2/{}" \;
+        # note: doesn't handle conflicts
+        
+    )
+}
 main () {
     case $1 in
     build)
@@ -180,15 +195,16 @@ main () {
                 done
                 # CFLAGS need to be generated.
                 CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
+                PATH="$ATA_TREE/$dep/usr/include:$PATH"
                 C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
             done < "$ATA_SRC_REPO/$pkg/$ver/needs"
         fi
         
-        if [ $pkg != musl-cross-make ]; then 
+        if [ "$pkg" != musl-cross-make ]; then 
             export CC=x86_64-linux-musl-cc
             export CXX=x86_64-linux-musl-c++
             
-            export PATH=$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH
+            export PATH="$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
             CFLAGS="-L$ATA_TREE/$pkg/$ver/lib $CFLAGS"
             export LDFLAGS="-L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         fi
@@ -201,10 +217,47 @@ main () {
         
         time1=$(date +%s)
         log "starting build"
-        env -i CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS=${MAKEFLAGS:--j10} LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
+        env -i CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS="${MAKEFLAGS:--j10}" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
         time2=$(date +%s)
         s=$((time2 - time1))
         log "build completed in ${s}s"
+    ;;
+    world)
+        shift 1
+        # ata worlds are identified by a sha256 of their sorted worldfile, for now
+        # ata worlds are a /usr created from symlinking the contents several packages together
+        # this may, in future, be implemented via FUSE.
+        # worlds can be found in $ATA_WORLDS
+        # no dependency resolution is needed
+        case $1 in
+            build)
+                shift 1
+                [ -z "$1" ] && err "missing worldfile argument"
+                id=$(sort -u "$1" | sha256sum)
+                id=${id%% *}
+                if [ ! -d "$ATA_WORLDS/$id" ]; then
+                    log "building world $id"
+                    base="$ATA_WORLDS/$id"
+                    while read -r pkg; do
+                        [ -d "$ATA_TREE/$pkg" ] || err "$pkg not found"
+                        log "merging $pkg"
+                        recursive_file_merge "$ATA_TREE/$pkg/usr" "$base"
+                    done < "$1"
+                    log "world $id created"
+                else
+                    log "world $id exists, skipping"
+                fi
+            ;;
+            env)
+                shift 1
+                [ -z "$1" ] && err "missing worldfile argument"
+                cmd=$2
+                : "${cmd:=sh}"
+                main world build "$1"
+                # shell doesn't scope variables
+                env -i PATH="$ATA_WORLDS/$id/bin" "$ATA_WORLDS/$id/bin/$cmd"
+            ;;
+        esac
     ;;
     *)
         err "$1 not implemented"
