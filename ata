@@ -69,7 +69,50 @@ filename_from_url () {
     IFS=$old_ifs
 }
 
+nth_component () {
+    # nth_component ( n string delim )
+    # NB. negative N counted from end
+    # 0 uninclusive
+    n=$1
+    string=$2
+    old_ifs=$IFS
+    IFS=${3:-/}
+    set -f
+    #shellcheck disable=SC2048,SC2086
+    set -- $string
+    
+    shift $(( (n + $#) % $# ))
+    
+    p "$1"
+    set +f
+    IFS=$old_ifs
+}
+
 # this will be replaced with a checksum system in future
+
+generate_checksums () {
+    # generate_checksums ( sources )
+    # runs in directory that is a package
+    # outputs to stdout
+    ver=$(filename_from_url "$PWD")
+    pkg=$(nth_component -2 "$PWD")
+
+    while read -r src _; do
+        case $src in
+            git*) 
+                p "$src git git"
+            ;;
+            http[s]*)
+                f=$(download_file "$src" "$pkg-$ver")
+                
+                c=$(sha256sum "$f")
+                c=${c% *}
+                log $c
+                p "$src $c" 
+            ;;
+        esac
+    done < "$1"
+}
 
 download_file () {
     # download_file( url, pkg-ver )
@@ -166,7 +209,7 @@ recursive_file_merge () {
         find . -type d -exec mkdir -p "$2/{}" \;
         find . -type l -exec ln -s "$1/{}" "$2/{}" \;
         find . -type f -exec ln -s "$1/{}" "$2/{}" \;
-        # note: doesn't handle conflicts
+        # NB. doesn't handle conflicts
         
     )
 }
@@ -180,10 +223,14 @@ main () {
         [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
         [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
         log "building $pkg/$ver"
-        for f in build sources; do
+        for f in build sources checksums; do
             [ -f "$ATA_SRC_REPO/$pkg/$ver/$f" ] || err "$pkg/$ver: no $f file"
         done
-
+        
+        log "comparing sources to checksums"
+        generate_checksums ./sources | sort > "/tmp/checksum-$$"
+        diff checksums "/tmp/checksum-$$" >/dev/null || err "generated checksums differ to sources"
+        
         if [ -f "$ATA_SRC_REPO/$pkg/$ver/needs" ]; then
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
@@ -221,6 +268,11 @@ main () {
         time2=$(date +%s)
         s=$((time2 - time1))
         log "build completed in ${s}s"
+    ;;
+    checksums)
+        [ -e sources ] || err "sources file required to generate checksums"   
+        [ -e checksums ] && log "checksums file exists, re-generating"
+        generate_checksums ./sources | sort > checksums
     ;;
     world)
         shift 1
