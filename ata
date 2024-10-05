@@ -210,9 +210,9 @@ validate_package () {
         
         log "comparing sources to checksums"
         (cd "$pkg_dir"
-            generate_checksums "$pkg_dir" | sort > "/tmp/checksum-$$"
+            generate_checksums "$pkg_dir" | sort > "/tmp/ata-checksum-$$"
         )
-        diff "$pkg_dir/checksums" "/tmp/checksum-$$" >/dev/null || err "checksums in package and generated differ"
+        diff "$pkg_dir/checksums" "/tmp/ata-checksum-$$" >/dev/null || err "checksums in package and generated differ"
         log "checksums match"
 }
 
@@ -229,6 +229,7 @@ construct_compiler_flags () {
                 done
                 # CFLAGS need to be generated.
                 CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
+                CXXFLAGS="$CXXFLAGS -I$ATA_TREE/$dep/usr/include"
                 PATH="$ATA_TREE/$dep/usr/include:$PATH"
                 C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
             done < "$pkg_dir/needs"
@@ -293,12 +294,14 @@ main () {
         env -i \
             CC="$CC" \
             CFLAGS="$CFLAGS" \
+            CXXFLAGS="$CXXFLAGS"
             LDFLAGS="$LDFLAGS" \
             PATH="$PATH" \
             ATA_TREE="$ATA_TREE" \
             MAKEFLAGS="${MAKEFLAGS:--j10}" \
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
+            CPLUS_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
             "$pkg_dir/build" "$destdir" "$pkg" "$ver"
         
         time2=$(date +%s)
@@ -319,6 +322,23 @@ main () {
         [ -e "$pkg_dir"/sources ] || err "sources file required to generate checksums"   
         [ -e "$pkg_dir"/checksums ] && log "checksums file exists, re-generating"
         generate_checksums "$pkg_dir" | sort > "$pkg_dir"/checksums
+    ;;
+    install)
+        shift 1
+        pkg=${1:?no package name provided}
+        ver=$2
+        
+        [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
+        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
+        [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
+        
+        : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+    
+        f="$XDG_CACHE_HOME/ata/$pkg-$ver/built/ata-built-$pkg-$ver.tar.gz"
+        [ -e "$f" ] || err "archive $f not found"
+        log "found archive for $pkg/$ver"
+        tar xzvf "$f" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        
     ;;
     world)
         shift 1

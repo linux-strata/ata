@@ -1,0 +1,9 @@
+#!/bin/sh
+
+./configure \
+    --prefix="$ATA_TREE/$2/$3/usr"
+
+make CFLAGS="$CFLAGS"
+make DESTDIR="$1" install
+
+ln -s flex "$1/$ATA_TREE/$2/$3/usr/bin/lex"

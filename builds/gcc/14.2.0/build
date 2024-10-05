@@ -16,8 +16,6 @@ cd gcc-build
     --without-included-gettext \
     --with-zstd=no \
     --with-system-zlib \
-    --host=x86_64-pc-linux-gnu \
-    --build=x86_64-pc-linux-musl
 
 make
-make install
+make DESTDIR="$1" install

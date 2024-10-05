@@ -1,0 +1,25 @@
+#!/bin/sh
+
+./configure \
+    --prefix="$ATA_TREE/$2/$3/usr" \
+    --enable-deterministic-archives \
+    --disable-gdwarf-5 \
+    --disable-gold \
+    --enable-lto \
+    --enable-ld=default \
+    --enable-plugins \
+    --disable-multilib \
+    --disable-nls \
+    --disable-gdb \
+    --disable-gprof \
+    --disable-gprofng \
+    --disable-readline \
+    --disable-werror \
+    --with-mmap \
+    --with-pic \
+    --with-system-zlib \
+    --enable-boostrap
+
+make configure-host
+make tooldir="$ATA_TREE/$2/$3/usr"
+make DESTDIR="$1" install

@@ -1,6 +1,10 @@
 #!/bin/sh
 
-./configure --no-thanks
+export CFLAGS="$CFLAGS -static"
+
+export LDFLAGS="$LDFLAGS -static"
+
+./configure
 
 base="$ATA_TREE/$2/$3/usr"
 

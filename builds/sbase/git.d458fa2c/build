@@ -5,7 +5,7 @@ PREFIX = $ATA_TREE/$2/$3/usr
 MANPREFIX = $ATA_TREE/$2/$3/usr/share/man
 RANLIB = ranlib
 CC = $CC
-CFLAGS = $CFLAGS $LDFLAGS
+CFLAGS = $CFLAGS -static $LDFLAGS
 LDFLAGS = $LDFLAGS
 EOF
 
