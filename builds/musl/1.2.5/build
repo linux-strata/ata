@@ -4,6 +4,8 @@
     --prefix="$ATA_TREE/$2/$3/usr" \
     --libdir="$ATA_TREE/$2/$3/usr/lib" \
     --syslibdir="$ATA_TREE/$2/$3/usr/lib"
+
 make
-make install
-ln -s "$ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1" "$ATA_TREE/$2/$3/usr/bin/ldd" # create an ldd for musl packages
+make DESTDIR="$1" install
+
+ln -s "$ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1" "$1/$ATA_TREE/$2/$3/usr/bin/ldd" # create an ldd for musl packages

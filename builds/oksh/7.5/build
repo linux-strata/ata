@@ -5,5 +5,5 @@
 base="$ATA_TREE/$2/$3/usr"
 
 make
-make PREFIX="$base" BINDIR="$base/bin" MANDIR="$base/share/man" install
-ln -sf oksh "$base/bin/sh" 
+make DESTDIR="$1" PREFIX="$base" BINDIR="$base/bin" MANDIR="$base/share/man" install
+ln -sf oksh "$1/$base/bin/sh" 

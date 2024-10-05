@@ -18,6 +18,6 @@ mkdir -p $ATA_TREE/$2/$3/usr/
 )
 
 make
-make install
+make DESTDIR="$1" install
 
-ln -sf libc.so $ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1
+ln -sf libc.so "$1/$ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1"

@@ -88,14 +88,50 @@ nth_component () {
     IFS=$old_ifs
 }
 
-# this will be replaced with a checksum system in future
+recursive_file_merge () {
+    # recursive_file_merge ( source, destination )
+    # create a recursive link between two directories.
+    # mirror created directories, softlink files.
+    (cd "$1"
+        find . -type d -exec mkdir -p "$2/{}" \;
+        find . -type l -exec ln -s "$1/{}" "$2/{}" \;
+        find . -type f -exec ln -s "$1/{}" "$2/{}" \;
+        # NB. doesn't handle conflicts
+        
+    )
+}
+
+copy_to () {
+    # copy_to ( path, dest )
+    # download_file -> copy_to
+  
+    # if its an archive, extract it
+    # if it's a directory, copy the files
+    case $1 in
+        *.tar*)
+            # NB. not very robust checking: anything is a valid file extension
+            # in practice, .tgz, .tbz2, etc can be found
+            log "extracting $1"
+            tar xf "$1" --strip-components 1 -C "$2"
+            # NB. --strip-components is not always present
+        ;;
+        *)
+            if [ -d "$1" ]; then
+                log "copying dir $1"
+                cp -r "$1/." "$2" 
+            else
+                log "copying file $1"
+                cp -f "$1" "$2"
+            fi
+        ;;
+    esac     
+}
 
 generate_checksums () {
-    # generate_checksums ( sources )
-    # runs in directory that is a package
+    # generate_checksums ( pkg_dir )
     # outputs to stdout
-    ver=$(filename_from_url "$PWD")
-    pkg=$(nth_component -2 "$PWD")
+    ver=$(filename_from_url "$1")
+    pkg=$(nth_component -2 "$1")
 
     while read -r src _; do
         case $src in
@@ -107,11 +143,11 @@ generate_checksums () {
                 
                 c=$(sha256sum "$f")
                 c=${c% *}
-                log $c
+                log "$c"
                 p "$src $c" 
             ;;
         esac
-    done < "$1"
+    done < "$1/sources"
 }
 
 download_file () {
@@ -121,7 +157,7 @@ download_file () {
     # 
     : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
     
-    dir="$XDG_CACHE_HOME/ata/$2"
+    dir="$XDG_CACHE_HOME/ata/$2/src"
     mkdir -p "$dir"
 
     log "URL: $1"
@@ -162,76 +198,27 @@ download_file () {
     p "$dir/$destination"
 }
 
-copy_to () {
-    # copy_to ( path, dest )
-    # download_file -> copy_to
-  
-    # if its an archive, extract it
-    # if it's a directory, copy the files
-    case $1 in
-        *.tar*)
-            # NB. not very robust checking: anything is a valid file extension
-            # in practice, .tgz, .tbz2, etc can be found
-            log "extracting $1"
-            tar xf "$1" --strip-components 1 -C "$2"
-            # NB. --strip-components is not always present
-        ;;
-        *)
-            if [ -d "$1" ]; then
-                log "copying dir $1"
-                cp -r "$1/." "$2" 
-            else
-                log "copying file $1"
-                cp -f "$1" "$2"
-            fi
-        ;;
-    esac     
-}
-
-setup_build_dir () {
-    # setup_build_dir ( dir )
-    while read -r url dir; do
-        extract_to=$build_dir
-        f=$(download_file "$url" "$pkg-$ver")
-        [ -z "$dir" ] || extract_to="$build_dir/$dir"
-        mkdir -p "$extract_to"
-        copy_to "$f" "$extract_to"
-    done < "$ATA_SRC_REPO/$pkg/$ver/sources"
-        
-}
-
-
-recursive_file_merge () {
-    # recursive_file_merge ( source, destination )
-    # create a recursive link between two directories.
-    # mirror created directories, softlink files.
-    (cd "$1"
-        find . -type d -exec mkdir -p "$2/{}" \;
-        find . -type l -exec ln -s "$1/{}" "$2/{}" \;
-        find . -type f -exec ln -s "$1/{}" "$2/{}" \;
-        # NB. doesn't handle conflicts
-        
-    )
-}
-main () {
-    case $1 in
-    build)
-        shift 1
-        pkg=${1:?no package name provided}
-        ver=$2
+validate_package () {
         [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
         [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
         [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
         log "building $pkg/$ver"
+        pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
         for f in build sources checksums; do
-            [ -f "$ATA_SRC_REPO/$pkg/$ver/$f" ] || err "$pkg/$ver: no $f file"
+            [ -f "$pkg_dir/$f" ] || err "$pkg/$ver: no $f file"
         done
         
         log "comparing sources to checksums"
-        generate_checksums ./sources | sort > "/tmp/checksum-$$"
-        diff checksums "/tmp/checksum-$$" >/dev/null || err "generated checksums differ to sources"
-        
-        if [ -f "$ATA_SRC_REPO/$pkg/$ver/needs" ]; then
+        (cd "$pkg_dir"
+            generate_checksums "$pkg_dir" | sort > "/tmp/checksum-$$"
+        )
+        diff "$pkg_dir/checksums" "/tmp/checksum-$$" >/dev/null || err "checksums in package and generated differ"
+        log "checksums match"
+}
+
+construct_compiler_flags () {
+        if [ -f "$pkg_dir/needs" ]; then
+            log "building RPATH"
             mkdir -p "$ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
                 [ -e "$ATA_TREE/$dep" ] || err "dependency $dep not found"
@@ -244,35 +231,94 @@ main () {
                 CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
                 PATH="$ATA_TREE/$dep/usr/include:$PATH"
                 C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-            done < "$ATA_SRC_REPO/$pkg/$ver/needs"
+            done < "$pkg_dir/needs"
         fi
         
         if [ "$pkg" != musl-cross-make ]; then 
-            export CC=x86_64-linux-musl-cc
-            export CXX=x86_64-linux-musl-c++
+            CC=x86_64-linux-musl-cc
+            CXX=x86_64-linux-musl-c++
             
-            export PATH="$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
+            PATH="$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
             CFLAGS="-L$ATA_TREE/$pkg/$ver/lib $CFLAGS"
             export LDFLAGS="-L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         fi
+}
+
+setup_build_dir () {
+    build_dir=/tmp/ata-build-$$
+    mkdir -p "$build_dir"
+    destdir=/tmp/ata-dest-$$
+    mkdir -p "$destdir"
+    log "setting up build in $build_dir"
+    cd "$build_dir"
+
+    while read -r url dir; do
+        extract_to=$build_dir
+        f=$(download_file "$url" "$pkg-$ver")
+        [ -z "$dir" ] || extract_to="$build_dir/$dir"
+        mkdir -p "$extract_to"
+        copy_to "$f" "$extract_to"
+    done < "$ATA_SRC_REPO/$pkg/$ver/sources"
+
+}
+
+create_binary () {
+    : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+    
+    dir="$XDG_CACHE_HOME/ata/$pkg-$ver/built"
+    mkdir -p "$dir"
+    cd "$destdir/$ATA_TREE/$pkg/$ver"
+    tar czf "$dir/ata-built-$pkg-$ver.tar.gz" .
+}
+
+main () {
+    case $1 in
+    build)
+        shift 1
+        pkg=${1:?no package name provided}
+        ver=$2
+        validate_package
+
+        if [ "$ATA_NO_REBUILD" = 1 ] && [ -d "$ATA_TREE/$pkg/$ver" ]; then
+             log "package already built, skipping"
+             exit 0
+        fi
         
-        build_dir=/tmp/ata-build-$$
-        mkdir -p "$build_dir"
-        log "setting up build in $build_dir"
-        setup_build_dir "$build_dir"
-        cd "$build_dir"
+        construct_compiler_flags
         
+        setup_build_dir
+
         time1=$(date +%s)
         log "starting build"
-        env -i CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" PATH="$PATH" ATA_TREE="$ATA_TREE" MAKEFLAGS="${MAKEFLAGS:--j10}" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" C_INCLUDE_PATH="${C_INCLUDE_PATH%:}" "$ATA_SRC_REPO/$pkg/$ver/build" null "$pkg" "$ver"
+        env -i \
+            CC="$CC" \
+            CFLAGS="$CFLAGS" \
+            LDFLAGS="$LDFLAGS" \
+            PATH="$PATH" \
+            ATA_TREE="$ATA_TREE" \
+            MAKEFLAGS="${MAKEFLAGS:--j10}" \
+            LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+            C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
+            "$pkg_dir/build" "$destdir" "$pkg" "$ver"
+        
         time2=$(date +%s)
         s=$((time2 - time1))
         log "build completed in ${s}s"
+        create_binary 
     ;;
     checksums)
-        [ -e sources ] || err "sources file required to generate checksums"   
-        [ -e checksums ] && log "checksums file exists, re-generating"
-        generate_checksums ./sources | sort > checksums
+        shift 1
+        pkg=${1:?no package name provided}
+        ver=$2
+        
+        [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
+        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
+        [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
+
+        pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
+        [ -e "$pkg_dir"/sources ] || err "sources file required to generate checksums"   
+        [ -e "$pkg_dir"/checksums ] && log "checksums file exists, re-generating"
+        generate_checksums "$pkg_dir" | sort > "$pkg_dir"/checksums
     ;;
     world)
         shift 1

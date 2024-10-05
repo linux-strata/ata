@@ -13,4 +13,4 @@ EOF
 # bypassing an LD step
 
 make
-make install
+make DESTDIR="$1" install

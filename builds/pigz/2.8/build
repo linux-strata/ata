@@ -3,9 +3,9 @@
 make LDFLAGS="$LDFLAGS" CFLAGS="$CFLAGS" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" CC="$CC"
 
 base="$ATA_TREE/$2/$3/usr"
-mkdir -p "$base/bin" "$base/share/man/man1"
+mkdir -p "$1/$base/bin" "$1/$base/share/man/man1"
 
-cp -f  pigz    "$base/bin"
-ln -sf pigz    "$base/bin/gzip"
-cp  -f pigz.1  "$base/share/man/man1"
-ln -sf pigz.1  "$base/share/man/man1/gzip.1"
+cp -f  pigz    "$1/$base/bin"
+ln -sf pigz    "$1/$base/bin/gzip"
+cp  -f pigz.1  "$1/$base/share/man/man1"
+ln -sf pigz.1  "$1/$base/share/man/man1/gzip.1"
