@@ -3,6 +3,7 @@
 # prototype #2
 
 export ATA_TREE="${ATA_TREE:-$HOME/code/ata/tree}"
+export HOST_ATA_TREE="${HOST_ATA_TREE:-$HOME/code/ata/tree}"
 export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
 export ATA_WORLDS="${ATA_WORLDS:-$HOME/code/ata/worlds}"
 
@@ -93,12 +94,35 @@ recursive_file_merge () {
     # create a recursive link between two directories.
     # mirror created directories, softlink files.
     (cd "$1"
-        find . -type d -exec mkdir -p "$2/{}" \;
-        find . -type l -exec ln -s "$1/{}" "$2/{}" \;
-        find . -type f -exec ln -s "$1/{}" "$2/{}" \;
+        find . | while read -r f; do
+            if [ -L "$f" ]; then
+                f=${f#./}
+                ln -s "$1/$f" "$2/$f"
+            else
+                f=${f#./}
+                [ -d "$f" ] && mkdir -p "$2/$f"
+                [ -f "$f" ] && ln -s "$1/$f" "$2/$f"
+            fi
+        done
         # NB. doesn't handle conflicts
-        
     )
+    
+}
+
+find_pkg () {
+    pkg=${1:?no package name provided}
+    ver=$2
+    [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg not found"
+    case $pkg in
+    */*)
+        ver=${pkg#*/}
+        pkg=${pkg%/*}
+    ;;
+    *)
+        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
+    ;;
+    esac
+    [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
 }
 
 copy_to () {
@@ -191,17 +215,15 @@ download_file () {
         ;;
         *)
             log "no scheme, assuming file"
-            [ -f "$1" ] || err "$1 not file"
-            destination=$1
+            [ -f "$pkg_dir/$1" ] || err "$1 not file"
+            destination="$pkg_dir/$1"
+            dir=""
         ;;
     esac
     p "$dir/$destination"
 }
 
 validate_package () {
-        [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
-        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
-        [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
         log "building $pkg/$ver"
         pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
         for f in build sources checksums; do
@@ -218,31 +240,33 @@ validate_package () {
 
 construct_compiler_flags () {
         if [ -f "$pkg_dir/needs" ]; then
-            log "building RPATH"
-            mkdir -p "$ATA_TREE/$pkg/$ver/lib"
+            #log "building RPATH"
+            mkdir -p "$HOST_ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
-                [ -e "$ATA_TREE/$dep" ] || err "dependency $dep not found"
-                for f in "$ATA_TREE/$dep"/usr/lib/*; do
+                [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
+                for f in "$HOST_ATA_TREE/$dep"/usr/lib/*; do
                     # Reduce the size of RPATH
                     # see https://github.com/distr1/distri/commit/19f3
-                    ln -sf "$f" "$ATA_TREE/$pkg/$ver/lib"
+                    ln -sf "$f" "$HOST_ATA_TREE/$pkg/$ver/lib"
                 done
                 # CFLAGS need to be generated.
-                CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
-                CXXFLAGS="$CXXFLAGS -I$ATA_TREE/$dep/usr/include"
-                PATH="$ATA_TREE/$dep/usr/include:$PATH"
-                C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
+                CFLAGS="$CFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+                CXXFLAGS="$CXXFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+                CPPFLAGS="$CPPFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+                PATH="$HOST_ATA_TREE/$dep/usr/bin:$PATH"
+                C_INCLUDE_PATH="$HOST_ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
             done < "$pkg_dir/needs"
         fi
         
-        if [ "$pkg" != musl-cross-make ]; then 
+        #if [ "$pkg" != musl-cross-make ]; then 
             CC=x86_64-linux-musl-cc
             CXX=x86_64-linux-musl-c++
             
-            PATH="$ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
-            CFLAGS="-L$ATA_TREE/$pkg/$ver/lib $CFLAGS"
-            export LDFLAGS="-L$ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
-        fi
+            PATH="$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
+            CFLAGS="$CFLAGS -L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1 -idirafter $HOST_ATA_TREE/musl-cross-make/0.9.10/usr/include"
+            CXXFLAGS="$CXXFLAGS -L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1 -idirafter $HOST_ATA_TREE/musl-cross-make/0.9.10/usr/include"
+            LDFLAGS="-L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
+        #fi
 }
 
 setup_build_dir () {
@@ -276,25 +300,18 @@ main () {
     case $1 in
     build)
         shift 1
-        pkg=${1:?no package name provided}
-        ver=$2
+        find_pkg "$@"
         validate_package
-
-        if [ "$ATA_NO_REBUILD" = 1 ] && [ -d "$ATA_TREE/$pkg/$ver" ]; then
-             log "package already built, skipping"
-             exit 0
-        fi
-        
         construct_compiler_flags
-        
         setup_build_dir
 
         time1=$(date +%s)
-        log "starting build"
+        log "starting build in $build_dir"
         env -i \
             CC="$CC" \
+            CXX="$CXX" \
             CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS"
+            CXXFLAGS="$CXXFLAGS" \
             LDFLAGS="$LDFLAGS" \
             PATH="$PATH" \
             ATA_TREE="$ATA_TREE" \
@@ -311,12 +328,7 @@ main () {
     ;;
     checksums)
         shift 1
-        pkg=${1:?no package name provided}
-        ver=$2
-        
-        [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
-        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
-        [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
+        find_pkg "$@"
 
         pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
         [ -e "$pkg_dir"/sources ] || err "sources file required to generate checksums"   
@@ -325,19 +337,22 @@ main () {
     ;;
     install)
         shift 1
-        pkg=${1:?no package name provided}
-        ver=$2
-        
-        [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg invalid"
-        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
-        [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
+        find_pkg "$@"
         
         : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
     
-        f="$XDG_CACHE_HOME/ata/$pkg-$ver/built/ata-built-$pkg-$ver.tar.gz"
-        [ -e "$f" ] || err "archive $f not found"
-        log "found archive for $pkg/$ver"
-        tar xzvf "$f" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        pkgf="$XDG_CACHE_HOME/ata/$pkg-$ver/built/ata-built-$pkg-$ver.tar.gz"
+        
+        if ! [ -e "$pkgf" ] || [ "$ATA_SKIP_REBUILD" != 1 ]; then
+            log "archive $pkgf not found, building"
+            main build "$pkg" "$ver"
+        fi
+        [ -e "$pkgf" ] || err "archive $pkgf not created"
+        log "found archive for $pkg/$ver: $pkgf"
+        mkdir -p "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        log "installing to $DESTDIR/$ATA_TREE/$pkg/$ver"
+        tar xzvf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        log "installed $pkg/$ver"
         
     ;;
     world)
@@ -353,13 +368,15 @@ main () {
                 [ -z "$1" ] && err "missing worldfile argument"
                 id=$(sort -u "$1" | sha256sum)
                 id=${id%% *}
-                if [ ! -d "$ATA_WORLDS/$id" ]; then
+                if [ ! -d "$DESTDIR/$ATA_WORLDS/$id" ]; then
                     log "building world $id"
-                    base="$ATA_WORLDS/$id"
+                    base="$DESTDIR/$ATA_WORLDS/$id"
+                    mkdir -p "$base"
+                    log "merging into $base"
                     while read -r pkg; do
-                        [ -d "$ATA_TREE/$pkg" ] || err "$pkg not found"
+                        [ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
                         log "merging $pkg"
-                        recursive_file_merge "$ATA_TREE/$pkg/usr" "$base"
+                        recursive_file_merge "$DESTDIR/$ATA_TREE/$pkg/usr" "$base"
                     done < "$1"
                     log "world $id created"
                 else

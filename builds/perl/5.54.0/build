@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 
 export BUILD_ZLIB=0
 export BUILD_BZIP2=0

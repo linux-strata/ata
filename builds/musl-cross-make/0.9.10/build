@@ -1,23 +1,24 @@
-#!/bin/sh
+#!/bin/sh -e
+
+base=$ATA_TREE/$2/$3/usr
 
 cat > config.mak << EOF
 TARGET = x86_64-linux-musl
-OUTPUT = $ATA_TREE/$2/$3/usr
+OUTPUT = $base
 COMMON_CONFIG += --disable-nls
-COMMON_CONFIG += --prefix=$ATA_TREE/$2/$3/usr
-COMMON_CONFIG += --libdir=$ATA_TREE/$2/$3/usr/lib
-
+COMMON_CONFIG += --prefix=$base
+COMMON_CONFIG += --libdir=$base/lib
+COMMON_CONFIG += CC="x86_64-linux-musl-gcc -static --static"
+COMMON_CONFIG += CXX="x86_64-linux-musl-g++ -static --static"
+MUSL_CONFIG += --syslibdir=$base/lib
 EOF
-mkdir -p $ATA_TREE/$2/$3/usr/
 
-(cd $ATA_TREE/$2/$3/usr
-    mkdir -p lib
-    ln -sf . x86_64-linux-musl 
-    ln -sf . usr 
-    ln -sf lib lib64
-)
+mkdir -p "$1/$base/lib"
+ln -sf . "$1/$base/x86_64-linux-musl" 
+ln -sf . "$1/$base/usr"
+
 
 make
 make DESTDIR="$1" install
-
-ln -sf libc.so "$1/$ATA_TREE/$2/$3/usr/lib/ld-musl-x86_64.so.1"
+rm -rf "$1/$base/home" # musl doesn't really know how to install ld-musl
+ln -sf libc.so "$1/$base/lib/ld-musl-x86_64.so.1"

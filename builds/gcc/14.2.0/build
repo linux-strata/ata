@@ -1,11 +1,11 @@
-#!/bin/sh
+#!/bin/sh -e
 
 mkdir -p gcc-build
 cd gcc-build
 
-../gcc/configure \
+../configure \
     --prefix="$ATA_TREE/$2/$3/usr" \
-    --enable-__cxa_atexit \
+    --oldincludedir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
     --enable-default-pie \
     --enable-default-ssp \
     --enable-shared \
@@ -16,6 +16,11 @@ cd gcc-build
     --without-included-gettext \
     --with-zstd=no \
     --with-system-zlib \
+    --disable-multilib \
+    --enable-bootstrap \
+    --with-native-system-header-dir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
+    --with-gxx-include-dir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
+    --target=x86_64-linux-musl
 
 make
 make DESTDIR="$1" install
