@@ -90,23 +90,19 @@ nth_component () {
 }
 
 recursive_file_merge () {
-    # recursive_file_merge ( source, destination )
+    # recursive_file_merge ( source, destination, [DESTDIR] )
     # create a recursive link between two directories.
     # mirror created directories, softlink files.
-    (cd "$1"
-        find . | while read -r f; do
-            if [ -L "$f" ]; then
-                f=${f#./}
-                ln -s "$1/$f" "$2/$f"
-            else
-                f=${f#./}
-                [ -d "$f" ] && mkdir -p "$2/$f"
-                [ -f "$f" ] && ln -s "$1/$f" "$2/$f"
-            fi
-        done
-        # NB. doesn't handle conflicts
-    )
-    
+    find "$3/$1" | while read -r abs; do
+        rel=${abs#"$3/$1"}
+        if [ -L "$abs" ]; then
+            ln -s "$1$rel" "$3$2$rel"
+        else
+            [ -d "$abs" ] && mkdir -p "$3/$2/$rel"
+            [ -f "$abs" ] && ln -s "$1$rel" "$3$2$rel"
+        fi
+    done
+    # NB. doesn't handle conflicts
 }
 
 find_pkg () {
@@ -370,13 +366,13 @@ main () {
                 id=${id%% *}
                 if [ ! -d "$DESTDIR/$ATA_WORLDS/$id" ]; then
                     log "building world $id"
-                    base="$DESTDIR/$ATA_WORLDS/$id"
-                    mkdir -p "$base"
-                    log "merging into $base"
+                    base="$ATA_WORLDS/$id"
+                    mkdir -p "$DESTDIR/$base"
+                    log "merging into $DESTDIR/$base"
                     while read -r pkg; do
                         [ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
                         log "merging $pkg"
-                        recursive_file_merge "$DESTDIR/$ATA_TREE/$pkg/usr" "$base"
+                        recursive_file_merge "$ATA_TREE/$pkg/usr" "$base" "$DESTDIR"
                     done < "$1"
                     log "world $id created"
                 else
