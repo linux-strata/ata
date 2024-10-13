@@ -1,0 +1,4 @@
+#!/bin/sh
+
+mkdir -p "$1/$ATA_TREE/$2/$3/usr/bin"
+cp ata "$1/$ATA_TREE/$2/$3/usr/bin"

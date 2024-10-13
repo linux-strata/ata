@@ -1,8 +1,13 @@
 #!/bin/sh -e
 
+# static linking fix from kiss linux 
+sed 's/\(curl_LDADD =\)/\1 -all-static/' src/Makefile.in > _
+mv -f _ src/Makefile.in
+
 ./configure \
-    --prefix=$ATA_TREE/$2/$3/usr \
+    --prefix="$ATA_TREE/$2/$3/usr" \
     --enable-ipv6 \
+    --enable-unix-sockets \
     --with-pic \
     --with-bearssl \
     --without-icu \
@@ -10,7 +15,8 @@
     --without-libidn \
     --without-libidn2 \
     --without-brotli \
-    --without-zstd
+    --without-zstd \
+    --with-ca-bundle=/etc/ssl/cert.pem
 
 make
 make DESTDIR="$1" install

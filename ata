@@ -19,6 +19,9 @@ export ATA_WORLDS="${ATA_WORLDS:-$HOME/code/ata/worlds}"
 
 # no dependency resolution at the moment 
 
+nl='
+'
+
 p () {
     # p ( str... )
     printf "%s\n" "$@"
@@ -95,6 +98,23 @@ nth_component () {
     p "$1"
     set +f
     IFS=$old_ifs
+}
+
+file_equal () {
+    # file_equal ( file1, file2 ) 
+    if which diff >/dev/null 2>&1; then
+        diff "$1" "$2" >/dev/null 2>&1
+        return $?
+    fi
+    f1=''
+    f2=''
+    while IFS='' read -r l; do
+        f1="${f1}${nl}${l}"
+    done <  "$1"
+    while IFS='' read -r l; do
+        f2="${f2}${nl}${l}"
+    done <  "$2"
+    [ "$f1" = "$f2" ]
 }
 
 recursive_file_merge () {
@@ -190,9 +210,10 @@ download_file () {
 
     log "URL: $1"
     case $1 in
-        git://*)
-            # git://git.com/repo@commit
+        git:*)
+            # git:https://git.com/repo@commit
             url=${1%@*}
+            url=${url#git:}
             commit=${1#*@}
             destination=$(filename_from_url "$url")
             destination="${destination}@${commit}"
@@ -235,8 +256,10 @@ validate_package () {
         done
         
         log "comparing sources to checksums"
-        (cd "$pkg_dir"
-            generate_checksums "$pkg_dir" | sort ) | diff "$pkg_dir/checksums" /dev/stdin >/dev/null || err "checksums in package and generated differ"
+        (   
+            cd "$pkg_dir"
+            generate_checksums "$pkg_dir" | sort
+        ) | file_equal "$pkg_dir/checksums" /dev/stdin || err "checksums in package and generated differ"
         log "checksums match"
 }
 
