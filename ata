@@ -17,11 +17,6 @@ export ATA_WORLDS="${ATA_WORLDS:-$HOME/code/ata/worlds}"
 # sources, which is a newline seperated set of source links
 # this file format is not stable. it will change in future
 
-# actions
-# ata add pkg [ver]
-# currently, ata builds packages directly into their install location
-# this will change in future
-
 # no dependency resolution at the moment 
 
 p () {
@@ -43,6 +38,19 @@ err () {
     # err ( str... )
     log "$@"
     exit 1
+}
+
+usage () {
+    cat << 'EOF'
+usage: ata <command> [<args>]
+
+The following commands are currently supported:
+    build     <pkg> [<version>]    Compile a binary package from source
+    install   <pkg> [<version>]    Install a compiled package
+    checksums <pkg> [<version>]    Generate checksums of a package's sources
+    world build  <worldfile>       Construct an ata world from a worldfile
+    world env    <worldfile>       Enter an environment specified by a worldfile
+EOF
 }
 
 dir_first () {
@@ -144,7 +152,7 @@ copy_to () {
                 cp -f "$1" "$2"
             fi
         ;;
-    esac     
+    esac
 }
 
 generate_checksums () {
@@ -228,10 +236,23 @@ validate_package () {
         
         log "comparing sources to checksums"
         (cd "$pkg_dir"
-            generate_checksums "$pkg_dir" | sort > "/tmp/ata-checksum-$$"
-        )
-        diff "$pkg_dir/checksums" "/tmp/ata-checksum-$$" >/dev/null || err "checksums in package and generated differ"
+            generate_checksums "$pkg_dir" | sort ) | diff "$pkg_dir/checksums" /dev/stdin >/dev/null || err "checksums in package and generated differ"
         log "checksums match"
+}
+
+create_rpath_dir () {
+    if [ -f "$pkg_dir/needs" ]; then
+            log "building RPATH"
+            mkdir -p "$ATA_TREE/$pkg/$ver/lib"
+            while read -r dep; do
+                [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
+                for f in "$ATA_TREE/$dep"/usr/lib/*; do
+                    # Reduce the size of RPATH
+                    # see https://github.com/distr1/distri/commit/19f3
+                    ln -sf "$f" "$ATA_TREE/$pkg/$ver/lib"
+                done
+            done < "$pkg_dir/needs"
+        fi
 }
 
 construct_compiler_flags () {
@@ -294,6 +315,9 @@ create_binary () {
 
 main () {
     case $1 in
+    usage)
+        usage
+    ;;
     build)
         shift 1
         find_pkg "$@"
@@ -391,7 +415,8 @@ main () {
         esac
     ;;
     *)
-        err "$1 not implemented"
+        err "command $1 not implemented"
+        usage
     ;;
     esac
 }

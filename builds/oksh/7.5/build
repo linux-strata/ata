@@ -1,13 +1,17 @@
 #!/bin/sh -e
 
-export CFLAGS="$CFLAGS -static"
+base="$ATA_TREE/$2/$3/usr"
+
+export CFLAGS="$CFLAGS -static -DKSH_SYSTEM_PROFILE=$base/etc/profile"
 
 export LDFLAGS="$LDFLAGS -static"
 
-./configure
-
-base="$ATA_TREE/$2/$3/usr"
+./configure \
+    --prefix="$base"
 
 make
-make DESTDIR="$1" PREFIX="$base" BINDIR="$base/bin" MANDIR="$base/share/man" install
+make DESTDIR="$1" install
 ln -sf oksh "$1/$base/bin/sh" 
+
+mkdir -p "$1/$base/etc"
+cp profile "$1/$base/etc"

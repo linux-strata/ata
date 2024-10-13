@@ -1,0 +1,9 @@
+#!/bin/sh
+
+export CFLAGS="$CFLAGS -static"
+
+./configure \
+    --prefix=$ATA_TREE/$2/$3/usr
+
+make
+make DESTDIR="$1" install
