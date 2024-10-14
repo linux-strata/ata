@@ -1,9 +1,10 @@
 #!/bin/sh -e
 
 export CFLAGS="$CFLAGS -static"
-./configure \
-    --prefix="$ATA_TREE/$2/$3/usr" \
-    --disable-nls
 
-make 
+./configure \
+    --prefix="$ATA_TREE/$2/$3/usr"
+
+make
 make DESTDIR="$1" install
+ln -s mawk "$1/$ATA_TREE/$2/$3/usr/bin/awk"

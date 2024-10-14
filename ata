@@ -2,10 +2,10 @@
 
 # prototype #2
 
-export ATA_TREE="${ATA_TREE:-$HOME/code/ata/tree}"
-export HOST_ATA_TREE="${HOST_ATA_TREE:-$HOME/code/ata/tree}"
+export ATA_TREE="${ATA_TREE:-/ata/tree}"
+export HOST_ATA_TREE="${HOST_ATA_TREE:-/ata/tree}"
 export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
-export ATA_WORLDS="${ATA_WORLDS:-$HOME/code/ata/worlds}"
+export ATA_WORLDS="${ATA_WORLDS:-/ata/worlds}"
 
 # currently, ata operates with a single repo and a single tree
 # the directory in ATA_SRC_REPO contains source packages
@@ -156,7 +156,7 @@ copy_to () {
     # if its an archive, extract it
     # if it's a directory, copy the files
     case $1 in
-        *.tar*)
+        *.tar*|*.t*)
             # NB. not very robust checking: anything is a valid file extension
             # in practice, .tgz, .tbz2, etc can be found
             log "extracting $1"

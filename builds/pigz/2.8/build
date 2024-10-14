@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-make LDFLAGS="$LDFLAGS" CFLAGS="$CFLAGS" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" CC="$CC"
+make LDFLAGS="$LDFLAGS -static" CFLAGS="$CFLAGS -static" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" CC="$CC"
 
 base="$ATA_TREE/$2/$3/usr"
 mkdir -p "$1/$base/bin" "$1/$base/share/man/man1"

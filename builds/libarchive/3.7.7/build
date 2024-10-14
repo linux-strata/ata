@@ -1,0 +1,13 @@
+#!/bin/sh
+
+export CFLAGS="$CFLAGS -static --static"
+export LDFLAGS="$LDFLAGS -static --static"
+
+./configure \
+    --prefix="$ATA_TREE/$2/$3/usr"
+
+make DESTDIR="$1" install
+
+ln -s bsdtar "$1/$ATA_TREE/$2/$3/usr/bin/tar"
+ln -s bsdcpio "$1/$ATA_TREE/$2/$3/usr/bin/cpio"
+# symlinks
