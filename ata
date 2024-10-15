@@ -4,7 +4,7 @@
 
 export ATA_TREE="${ATA_TREE:-/ata/tree}"
 export HOST_ATA_TREE="${HOST_ATA_TREE:-/ata/tree}"
-export ATA_SRC_REPO="${ATA_SRC_REPO:-$HOME/code/ata/builds}"
+export ATA_SRC_REPO="${ATA_SRC_REPO:-/ata/src/builds}"
 export ATA_WORLDS="${ATA_WORLDS:-/ata/worlds}"
 
 # currently, ata operates with a single repo and a single tree
@@ -133,6 +133,19 @@ recursive_file_merge () {
     # NB. doesn't handle conflicts
 }
 
+is_dynamic () {
+    # is_dynamic ( file )
+    
+    case $(readelf -d "$1" 2>&1 | tail -n1) in
+        *"no dynamic"*)
+            return 1 ;;
+        *"Not an ELF"*)
+            return 1 ;;
+        *)
+            return 0 ;;
+    esac
+}
+
 find_pkg () {
     pkg=${1:?no package name provided}
     ver=$2
@@ -147,6 +160,7 @@ find_pkg () {
     ;;
     esac
     [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
+    pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
 }
 
 copy_to () {
@@ -250,7 +264,6 @@ download_file () {
 
 validate_package () {
         log "building $pkg/$ver"
-        pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
         for f in build sources checksums; do
             [ -f "$pkg_dir/$f" ] || err "$pkg/$ver: no $f file"
         done
@@ -264,18 +277,26 @@ validate_package () {
 }
 
 create_rpath_dir () {
-    if [ -f "$pkg_dir/needs" ]; then
-            log "building RPATH"
-            mkdir -p "$ATA_TREE/$pkg/$ver/lib"
-            while read -r dep; do
-                [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
-                for f in "$ATA_TREE/$dep"/usr/lib/*; do
-                    # Reduce the size of RPATH
-                    # see https://github.com/distr1/distri/commit/19f3
-                    ln -sf "$f" "$ATA_TREE/$pkg/$ver/lib"
-                done
-            done < "$pkg_dir/needs"
-        fi
+    for f in "$DESTDIR$ATA_TREE/$pkg/$ver/usr/bin/"*; do
+        [ -e "$f" ]     || continue
+        is_dynamic "$f" || continue
+        [ -L "$f" ]     && continue
+        
+        log "dynamic exe $f"
+        patchelf "$f" --set-interpreter "$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
+        mkdir -p "$DESTDIR$ATA_TREE/$pkg/$ver/lib"
+        ldd "$f" | while read -r lib _ path addr; do
+            [ "$lib" = "linux-vdso.so.1" ] && continue
+            [ -L "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" ] && continue
+            path=$(readlink -f $path)
+            path=${path#$HOST_ATA_TREE}
+            path=${ATA_TREE}${path}
+            ln -s "$path" "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib"
+            log "library $lib, path $path"
+            
+        done
+        patchelf "$f" --set-rpath "$ATA_TREE/$pkg/$ver/lib"
+    done
 }
 
 construct_compiler_flags () {
@@ -285,6 +306,7 @@ construct_compiler_flags () {
             while read -r dep; do
                 [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
                 for f in "$HOST_ATA_TREE/$dep"/usr/lib/*; do
+                    [ -e "$f" ] || continue
                     # Reduce the size of RPATH
                     # see https://github.com/distr1/distri/commit/19f3
                     ln -sf "$f" "$HOST_ATA_TREE/$pkg/$ver/lib"
@@ -361,7 +383,6 @@ main () {
             MAKEFLAGS="${MAKEFLAGS:--j10}" \
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
-            CPLUS_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
             "$pkg_dir/build" "$destdir" "$pkg" "$ver"
         
         time2=$(date +%s)
@@ -372,8 +393,7 @@ main () {
     checksums)
         shift 1
         find_pkg "$@"
-
-        pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
+        
         [ -e "$pkg_dir"/sources ] || err "sources file required to generate checksums"   
         [ -e "$pkg_dir"/checksums ] && log "checksums file exists, re-generating"
         generate_checksums "$pkg_dir" | sort > "$pkg_dir"/checksums
@@ -395,8 +415,20 @@ main () {
         mkdir -p "$DESTDIR/$ATA_TREE/$pkg/$ver"
         log "installing to $DESTDIR/$ATA_TREE/$pkg/$ver"
         tar xzvf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        create_rpath_dir
         log "installed $pkg/$ver"
         
+    ;;
+    files)
+        shift 1
+        find_pkg "$@"
+        
+        (cd "$HOST_ATA_TREE/$pkg/$ver/usr"; find .) # everything from the package itself goes into /usr 
+    ;;
+    resolve)
+        shift 1
+        find_pkg "$@"
+        p "$ATA_TREE/$pkg/$ver"
     ;;
     world)
         shift 1
@@ -438,8 +470,8 @@ main () {
         esac
     ;;
     *)
-        err "command $1 not implemented"
         usage
+        err "command $1 not implemented"
     ;;
     esac
 }

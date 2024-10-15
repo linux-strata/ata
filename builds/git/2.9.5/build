@@ -1,5 +1,8 @@
 #!/bin/sh -e
 
+export CFLAGS="$CFLAGS -static"
+export LDFLAGS="$LDFLAGS -static"
+
 cat > config.mak << EOF
 NO_GETTEXT=YesPlease
 NO_SVN_TESTS=YesPlease
