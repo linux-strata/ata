@@ -281,21 +281,20 @@ create_rpath_dir () {
         [ -e "$f" ]     || continue
         is_dynamic "$f" || continue
         [ -L "$f" ]     && continue
-        
-        log "dynamic exe $f"
+        patchelf "$f" --set-rpath "$ATA_TREE/$pkg/$ver/lib"
+        # TODO: multiple libc
         patchelf "$f" --set-interpreter "$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         mkdir -p "$DESTDIR$ATA_TREE/$pkg/$ver/lib"
-        ldd "$f" | while read -r lib _ path addr; do
-            [ "$lib" = "linux-vdso.so.1" ] && continue
-            [ -L "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" ] && continue
-            path=$(readlink -f $path)
-            path=${path#$HOST_ATA_TREE}
-            path=${ATA_TREE}${path}
-            ln -s "$path" "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib"
-            log "library $lib, path $path"
-            
-        done
-        patchelf "$f" --set-rpath "$ATA_TREE/$pkg/$ver/lib"
+        lib=$(patchelf --print-needed "$f")
+        [ -L "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" ] && continue
+        while read -r dep; do
+            main files /lib "$dep" | while read -r dep_file; do
+                if [ $(filename_from_url "$dep_file") = $lib ]; then
+                    ln -s "$ATA_TREE/$dep/usr${dep_file#.}" "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" 
+                fi    
+            done
+        done < "$pkg_dir/needs"
+        p
     done
 }
 
@@ -413,7 +412,7 @@ main () {
         [ -e "$pkgf" ] || err "archive $pkgf not created"
         log "found archive for $pkg/$ver: $pkgf"
         mkdir -p "$DESTDIR/$ATA_TREE/$pkg/$ver"
-        log "installing to $DESTDIR/$ATA_TREE/$pkg/$ver"
+        log "installing to $DESTDIR$ATA_TREE/$pkg/$ver"
         tar xzvf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
         create_rpath_dir
         log "installed $pkg/$ver"
@@ -421,9 +420,14 @@ main () {
     ;;
     files)
         shift 1
+        case $1 in
+        /*) # illegal package name
+            files_dir=$1
+            shift 1
+            ;;
+        esac
         find_pkg "$@"
-        
-        (cd "$HOST_ATA_TREE/$pkg/$ver/usr"; find .) # everything from the package itself goes into /usr 
+        (cd "$HOST_ATA_TREE/$pkg/$ver/usr"; find ".$files_dir") # everything from the package itself goes into /usr 
     ;;
     resolve)
         shift 1
@@ -447,7 +451,7 @@ main () {
                     log "building world $id"
                     base="$ATA_WORLDS/$id"
                     mkdir -p "$DESTDIR/$base"
-                    log "merging into $DESTDIR/$base"
+                    log "merging into $DESTDIR$base"
                     while read -r pkg; do
                         [ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
                         log "merging $pkg"
