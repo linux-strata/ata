@@ -124,10 +124,10 @@ recursive_file_merge () {
     find "$3/$1" | while read -r abs; do
         rel=${abs#"$3/$1"}
         if [ -L "$abs" ]; then
-            ln -s "$1$rel" "$3$2$rel"
+            ln -sf "$1$rel" "$3$2$rel"
         else
             [ -d "$abs" ] && mkdir -p "$3/$2/$rel"
-            [ -f "$abs" ] && ln -s "$1$rel" "$3$2$rel"
+            [ -f "$abs" ] && ln -sf "$1$rel" "$3$2$rel"
         fi
     done
     # NB. doesn't handle conflicts
@@ -413,7 +413,7 @@ main () {
         log "found archive for $pkg/$ver: $pkgf"
         mkdir -p "$DESTDIR/$ATA_TREE/$pkg/$ver"
         log "installing to $DESTDIR$ATA_TREE/$pkg/$ver"
-        tar xzvf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
+        tar xzf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkg/$ver"
         create_rpath_dir
         log "installed $pkg/$ver"
         
@@ -453,9 +453,10 @@ main () {
                     mkdir -p "$DESTDIR/$base"
                     log "merging into $DESTDIR$base"
                     while read -r pkg; do
-                        [ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
-                        log "merging $pkg"
+                        #[ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
+                        log "merging $pkg from $1"
                         recursive_file_merge "$ATA_TREE/$pkg/usr" "$base" "$DESTDIR"
+                        
                     done < "$1"
                     log "world $id created"
                 else
