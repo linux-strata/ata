@@ -1,1 +1,2 @@
-musl-cross-make/0.9.10
+libc:musl-cross-make/0.9.10
+toolchain:musl-cross-make/0.9.10

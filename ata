@@ -13,6 +13,13 @@ export ATA_WORLDS="${ATA_WORLDS:-/ata/worlds}"
 # the directory must contain:
 # an executable file named 'build'
 # a newline seperated file named 'needs', where each line is a $name/$ver
+# 'needs' files must contain two special directives:
+# libc:$pkg/$ver
+# toolchain:$pkg/$ver
+# these will configure the toolchain and libc used in building the package
+# a package specified by libc: must contain a file named `libc` containing the path
+# to the dynamic linker
+# a package specified by toolchain: must a file named `toolchain` containing the triplet
 # these packages will be symlinked into the package's /lib dir
 # sources, which is a newline seperated set of source links
 # this file format is not stable. it will change in future
@@ -151,13 +158,13 @@ find_pkg () {
     ver=$2
     [ -d "$ATA_SRC_REPO"/"$pkg" ] || err "pkg $pkg not found"
     case $pkg in
-    */*)
-        ver=${pkg#*/}
-        pkg=${pkg%/*}
-    ;;
-    *)
-        [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
-    ;;
+        */*)
+            ver=${pkg#*/}
+            pkg=${pkg%/*}
+        ;;
+        *)
+            [ -z "$ver" ] && ver=$(dir_first "$ATA_SRC_REPO/$pkg")
+        ;;
     esac
     [ -d "$ATA_SRC_REPO/$pkg/$ver" ] || err "$pkg/$ver: no such version"
     pkg_dir="$ATA_SRC_REPO/$pkg/$ver"
@@ -214,9 +221,6 @@ generate_checksums () {
 
 download_file () {
     # download_file( url, pkg-ver )
-    # if http:
-    # extract filename
-    # 
     : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
     
     dir="$XDG_CACHE_HOME/ata/$2/src"
@@ -264,15 +268,12 @@ download_file () {
 
 validate_package () {
         log "building $pkg/$ver"
-        for f in build sources checksums; do
+        for f in build sources checksums needs; do
             [ -f "$pkg_dir/$f" ] || err "$pkg/$ver: no $f file"
         done
         
         log "comparing sources to checksums"
-        (   
-            cd "$pkg_dir"
-            generate_checksums "$pkg_dir" | sort
-        ) | file_equal "$pkg_dir/checksums" /dev/stdin || err "checksums in package and generated differ"
+        generate_checksums "$pkg_dir" | sort | file_equal "$pkg_dir/checksums" /dev/stdin || err "checksums in package and generated differ"
         log "checksums match"
 }
 
@@ -282,12 +283,18 @@ create_rpath_dir () {
         is_dynamic "$f" || continue
         [ -L "$f" ]     && continue
         patchelf "$f" --set-rpath "$ATA_TREE/$pkg/$ver/lib"
-        # TODO: multiple libc
-        patchelf "$f" --set-interpreter "$ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         mkdir -p "$DESTDIR$ATA_TREE/$pkg/$ver/lib"
         lib=$(patchelf --print-needed "$f")
         [ -L "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" ] && continue
         while read -r dep; do
+            case $dep in
+                libc:*)
+                    dep=${dep#*:}
+                    read -r libc < "$DESTDIR$ATA_TREE/$dep/ata/libc"
+                    patchelf "$f" --set-interpreter "$ATA_TREE/$dep/usr/lib/$libc"
+                ;;
+            esac
+            dep=${dep%*:}
             main files /lib "$dep" | while read -r dep_file; do
                 if [ $(filename_from_url "$dep_file") = $lib ]; then
                     ln -s "$ATA_TREE/$dep/usr${dep_file#.}" "$DESTDIR$ATA_TREE/$pkg/$ver/lib/$lib" 
@@ -303,6 +310,7 @@ construct_compiler_flags () {
             #log "building RPATH"
             mkdir -p "$HOST_ATA_TREE/$pkg/$ver/lib"
             while read -r dep; do
+                dep=${dep#*:}
                 [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
                 for f in "$HOST_ATA_TREE/$dep"/usr/lib/*; do
                     [ -e "$f" ] || continue
@@ -328,6 +336,69 @@ construct_compiler_flags () {
             CXXFLAGS="$CXXFLAGS -L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1 -idirafter $HOST_ATA_TREE/musl-cross-make/0.9.10/usr/include"
             LDFLAGS="-L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
         #fi
+}
+
+nconstruct_compiler_flags () {
+    rpath="$HOST_ATA_TREE/$pkg/$ver/lib"
+    CFLAGS="-L$rpath -Wl,-rpath,$rpath"
+    CXXFLAGS="-L$rpath -Wl,-rpath,$rpath"
+    LDFLAGS="-L$rpath -Wl,-rpath,$rpath"
+    parse_needs
+}
+
+setup_libc () {
+    [ -e "$ATA_SRC_REPO/$1/libc" ] || err "package specified with libc: missing 'libc' file"
+    read -r libc < "$ATA_SRC_REPO/$1/libc"
+    CFLAGS="-Wl,-dynamic-linker,$HOST_ATA_TREE/$1/usr/lib/$libc -idirafter $HOST_ATA_TREE/$1/usr/include $CFLAGS"
+    LDFLAGS="-Wl,-dynamic-linker,$HOST_ATA_TREE/$1/usr/lib/$libc $LDFLAGS"
+    CXXFLAGS="-Wl,-dynamic-linker,$HOST_ATA_TREE/$1/usr/lib/$libc -idirafter $HOST_ATA_TREE/$1/usr/include $CXXFLAGS"
+}
+
+setup_toolchain () {
+    [ -e "$ATA_SRC_REPO/$1/toolchain" ] || err "package specified with toolchain: missing 'toolchain' file"
+    read -r toolchain < "$ATA_SRC_REPO/$1/toolchain"
+    CC="$toolchain-cc"
+    CXX="$toolchain-c++"
+}
+
+parse_needs () {
+    mkdir -p "$HOST_ATA_TREE/$pkg/$ver/lib"
+    while read -r dep; do
+        case $dep in
+            libc:*) 
+                [ "$libc" ] && err "$pkg/$ver/needs: libc set twice"
+                libc=${dep#libc:}
+                dep=$libc
+            ;;
+            toolchain:*)
+                [ "$toolchain" ] && err "$pkg/$ver/needs: toolchain set twice"
+                toolchain=${dep#toolchain:}
+                dep=$toolchain
+            ;;
+            *:*)
+                log "$pkg/$ver/needs: directive ${dep%:*} unrecognised. ignoring"
+            ;;
+        esac
+        [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
+        [ "$odep" = "$dep" ] && continue
+        odep=$dep
+        CFLAGS="$CFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+        CXXFLAGS="$CXXFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+        CPPFLAGS="$CPPFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
+        PATH="$HOST_ATA_TREE/$dep/usr/bin:$PATH"
+        C_INCLUDE_PATH="$HOST_ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
+        
+        # This code exists to enable building to another host to work.
+        # Linking will fail without it. 
+        # Builds will eventually be switched over to an isolated environment,
+        # which will eliminate the HOST_ATA_TREE and ATA_TREE distinction.
+        for f in "$HOST_ATA_TREE/$dep"/usr/lib/*; do
+            [ -e "$f" ] || continue
+            ln -sf "$f" "$HOST_ATA_TREE/$pkg/$ver/lib"
+        done
+    done < "$pkg_dir/needs"
+    [ -z "$libc" ] || setup_libc "$libc"
+    [ -z "$toolchain" ] || setup_toolchain "$toolchain"
 }
 
 setup_build_dir () {
@@ -382,7 +453,11 @@ main () {
             MAKEFLAGS="${MAKEFLAGS:--j10}" \
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
+            __BASE="$ATA_TREE/$pkg/$ver/usr" \
             "$pkg_dir/build" "$destdir" "$pkg" "$ver"
+            
+        mkdir -p "$destdir/$ATA_TREE/$pkg/$ver/ata"
+        cp -r "$pkg_dir"/* "$destdir/$ATA_TREE/$pkg/$ver/ata"
         
         time2=$(date +%s)
         s=$((time2 - time1))

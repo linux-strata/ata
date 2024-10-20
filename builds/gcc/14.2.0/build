@@ -4,8 +4,7 @@ mkdir -p gcc-build
 cd gcc-build
 
 ../configure \
-    --prefix="$ATA_TREE/$2/$3/usr" \
-    --oldincludedir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
+    --prefix="$__BASE" \
     --enable-default-pie \
     --enable-default-ssp \
     --enable-shared \
@@ -17,10 +16,14 @@ cd gcc-build
     --with-zstd=no \
     --with-system-zlib \
     --disable-multilib \
+    --disable-libstdcxx-pch \
+    --disable-symvers \
+    --disable-libmpx \
+    --disable-libmudflap \
+    --disable-libsanitizer \
+    --disable-werror \
     --enable-bootstrap \
-    --with-native-system-header-dir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
-    --with-gxx-include-dir="$ATA_TREE/musl-cross-make/0.9.10/usr/include" \
-    --target=x86_64-linux-musl
+    --target=x86_64-pc-linux-musl
 
 make
 make DESTDIR="$1" install
