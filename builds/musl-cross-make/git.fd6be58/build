@@ -1,30 +1,33 @@
 #!/bin/sh -e
 
-export CFLAGS=""
-export CXXFLAGS=""
-export CPPFLAGS=""
-export LDFLAGS=""
+base="$ATA_TREE/$2/$3/usr"
+
+#if [ "$CC" ]; then
+#    CC="$CC -static --static"
+#fi
+
+#if [ "$CXX" ]; then
+#    CXX="$CXX -static --static"
+#fi
 
 cat > config.mak << EOF
+HOST = x86_64-linux-musl
 TARGET = x86_64-linux-musl
 GCC_VER = 11.2.0
-OUTPUT = $__BASE
+OUTPUT = $base
 COMMON_CONFIG += --disable-nls
-COMMON_CONFIG += --prefix=$__BASE
-COMMON_CONFIG += --libdir=$__BASE/lib
-COMMON_CONFIG += CC="${CC:-gcc} -static --static"
-COMMON_CONFIG += CXX="${CXX:-g++} -static --static"
-MUSL_CONFIG += --syslibdir=$__BASE/lib
-GCC_CONFIG += --disable-fixed-point
-DL_CMD = curl -C - -L -o
+COMMON_CONFIG += --prefix=$base
+COMMON_CONFIG += --libdir=$base/lib
+COMMON_CONFIG += CC="${CC:-gcc}"
+COMMON_CONFIG += CXX="${CXX:-g++}"
+MUSL_CONFIG += --syslibdir=$base/lib
+DL_CMD = /usr/bin/curl -C - -L -o
 EOF
 
 mkdir -p "$1/$__BASE/lib"
 ln -sf . "$1/$__BASE/x86_64-linux-musl" 
 ln -sf . "$1/$__BASE/usr"
 
-bash
-
 make
 make DESTDIR="$1" install
-ln -sf libc.so "$1/$__BASE/lib/ld-musl-x86_64.so.1"
+ln -sf libc.so "$1/$base/lib/ld-musl-x86_64.so.1"
