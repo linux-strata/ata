@@ -1,2 +1,5 @@
-libc:musl-cross-make/0.9.10
-toolchain:musl-cross-make/0.9.10
+libc:musl-cross-make/git.fd6be58
+toolchain:musl-cross-make/git.fd6be58
+sbase/git.d458fa2c
+oksh/7.5
+make/4.4.1

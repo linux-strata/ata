@@ -1,3 +1,5 @@
-libc:musl-cross-make/0.9.10
-toolchain:musl-cross-make/0.9.10
+libc:musl-cross-make/git.fd6be58
+toolchain:musl-cross-make/git.fd6be58
 m4/1.4.19
+busybox/1.36.1
+make/4.4.1

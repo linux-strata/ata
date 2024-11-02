@@ -1,12 +1,13 @@
 #!/bin/sh -e
 
-export CPPFLAGS=""
-export CFLAGS=""
-export CXXFLAGS=""
+export CC="$CC --static -static
+export CXX="$CXX --static -static"
+
 mkdir -p gcc-build
 cd gcc-build
 
 ../configure \
+    libat_cv_have_ifunc=no \
     --prefix="$__BASE" \
     --enable-default-pie \
     --enable-default-ssp \
@@ -25,7 +26,9 @@ cd gcc-build
     --disable-libmudflap \
     --disable-libsanitizer \
     --disable-werror \
+    --disable-fixed-point \
     --enable-bootstrap \
+    --host=x86_64-pc-linux-musl \
     --target=x86_64-pc-linux-musl
 
 make

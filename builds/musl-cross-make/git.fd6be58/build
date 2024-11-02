@@ -10,16 +10,17 @@ base="$ATA_TREE/$2/$3/usr"
 #    CXX="$CXX -static --static"
 #fi
 
+# HOST = x86_64-linux-musl
 cat > config.mak << EOF
-HOST = x86_64-linux-musl
+
 TARGET = x86_64-linux-musl
 GCC_VER = 11.2.0
 OUTPUT = $base
 COMMON_CONFIG += --disable-nls
 COMMON_CONFIG += --prefix=$base
 COMMON_CONFIG += --libdir=$base/lib
-COMMON_CONFIG += CC="${CC:-gcc}"
-COMMON_CONFIG += CXX="${CXX:-g++}"
+COMMON_CONFIG += CC=${CC:-gcc}
+COMMON_CONFIG += CXX=${CXX:-g++}
 MUSL_CONFIG += --syslibdir=$base/lib
 DL_CMD = /usr/bin/curl -C - -L -o
 EOF
@@ -31,3 +32,5 @@ ln -sf . "$1/$__BASE/usr"
 make
 make DESTDIR="$1" install
 ln -sf libc.so "$1/$base/lib/ld-musl-x86_64.so.1"
+ln -sf x86_64-linux-musl-gcc "$1/$base/bin/gcc"
+ln -sf x86_64-linux-musl-g++ "$1/$base/bin/g++"
