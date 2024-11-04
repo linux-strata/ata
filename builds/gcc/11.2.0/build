@@ -1,11 +1,12 @@
 #!/bin/sh -e
 
-export CC="$CC --static -static
+export CC="$CC --static -static"
 export CXX="$CXX --static -static"
 
 mkdir -p gcc-build
 cd gcc-build
 
+cat << EOF
 ../configure \
     libat_cv_have_ifunc=no \
     --prefix="$__BASE" \
@@ -28,8 +29,11 @@ cd gcc-build
     --disable-werror \
     --disable-fixed-point \
     --enable-bootstrap \
-    --host=x86_64-pc-linux-musl \
-    --target=x86_64-pc-linux-musl
+    --host=x86_64-linux-musl \
+    --build=x86_64-linux-musl \
+    --target=x86_64-linux-musl
+EOF
 
+../configure --disable-multilib --disable-fixed-point
 make
 make DESTDIR="$1" install

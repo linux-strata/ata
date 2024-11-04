@@ -1,0 +1,10 @@
+#!/bin/sh -e
+
+./configure \
+    --prefix="$__BASE" \
+    --with-bzip2 \
+    --with-xz \
+    --with-zlib
+
+make
+make DESTDIR="$1" install

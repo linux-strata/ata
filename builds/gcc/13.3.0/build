@@ -1,0 +1,35 @@
+#!/bin/sh -e
+
+export CC="$CC --static -static"
+export CXX="$CXX --static -static"
+
+mkdir -p gcc-build
+cd gcc-build
+
+../configure \
+    libat_cv_have_ifunc=no \
+    --prefix="$__BASE" \
+    --enable-default-pie \
+    --enable-default-ssp \
+    --enable-shared \
+    --enable-threads \
+    --enable-tls \
+    --enable-initfini-array \
+    --enable-languages=c,c++ \
+    --without-included-gettext \
+    --with-zstd=no \
+    --with-system-zlib \
+    --disable-multilib \
+    --disable-libstdcxx-pch \
+    --disable-symvers \
+    --disable-libmpx \
+    --disable-libmudflap \
+    --disable-libsanitizer \
+    --disable-werror \
+    --disable-fixed-point \
+    --enable-bootstrap \
+    --host=x86_64-pc-linux-musl \
+    --target=x86_64-pc-linux-musl
+
+make
+make DESTDIR="$1" install
