@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+export CFLAGS="$CFLAGS -static -fPIC" 
+
 ./configure \
     --prefix="$__BASE" \
     --with-bzip2 \

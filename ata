@@ -307,39 +307,6 @@ create_rpath_dir () {
     done
 }
 
-cconstruct_compiler_flags () {
-        if [ -f "$pkg_dir/needs" ]; then
-            #log "building RPATH"
-            mkdir -p "$HOST_ATA_TREE/$pkg/$ver/lib"
-            while read -r dep; do
-                dep=${dep#*:}
-                [ -e "$HOST_ATA_TREE/$dep" ] || err "dependency $dep not found"
-                for f in "$HOST_ATA_TREE/$dep"/usr/lib/*; do
-                    [ -e "$f" ] || continue
-                    # Reduce the size of RPATH
-                    # see https://github.com/distr1/distri/commit/19f3
-                    ln -sf "$f" "$HOST_ATA_TREE/$pkg/$ver/lib"
-                done
-                # CFLAGS need to be generated.
-                CFLAGS="$CFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
-                CXXFLAGS="$CXXFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
-                CPPFLAGS="$CPPFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
-                PATH="$HOST_ATA_TREE/$dep/usr/bin:$PATH"
-                C_INCLUDE_PATH="$HOST_ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-            done < "$pkg_dir/needs"
-        fi
-        
-        #if [ "$pkg" != musl-cross-make ]; then 
-            CC=x86_64-linux-musl-cc
-            CXX=x86_64-linux-musl-c++
-            
-            PATH="$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/bin:$PATH"
-            CFLAGS="$CFLAGS -L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1 -isystem $HOST_ATA_TREE/musl-cross-make/0.9.10/usr/include"
-            CXXFLAGS="$CXXFLAGS -L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1 -isystem $HOST_ATA_TREE/musl-cross-make/0.9.10/usr/include"
-            LDFLAGS="-L$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-rpath,$HOST_ATA_TREE/$pkg/$ver/lib -Wl,-dynamic-linker,$HOST_ATA_TREE/musl-cross-make/0.9.10/usr/lib/ld-musl-x86_64.so.1"
-        #fi
-}
-
 construct_compiler_flags () {
     rpath="$HOST_ATA_TREE/$pkg/$ver/lib"
     CFLAGS="-L$rpath -Wl,-rpath,$rpath"
@@ -389,7 +356,7 @@ parse_needs () {
         CPPFLAGS="$CPPFLAGS -I$HOST_ATA_TREE/$dep/usr/include"
         MPATH="$HOST_ATA_TREE/$dep/usr/bin:$MPATH"
         C_INCLUDE_PATH="$HOST_ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-        
+        PKG_CONFIG_PATH="$HOST_ATA_TREE/$dep/usr/lib/pkgconfig:$PKG_CONFIG_PATH"        
         # This code exists to enable building to another host to work.
         # Linking will fail without it. 
         # Builds will eventually be switched over to an isolated environment,
@@ -455,6 +422,7 @@ main () {
             MAKEFLAGS="${MAKEFLAGS:--j10}" \
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
+            PKG_CONFIG_PATH="${PKG_CONFIG_PATH%:}" \
             __BASE="$ATA_TREE/$pkg/$ver/usr" \
             "$pkg_dir/build" "$destdir" "$pkg" "$ver"
             
