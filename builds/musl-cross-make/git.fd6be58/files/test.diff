@@ -1,4 +1,16 @@
---- gcc-9.2.0/libstdc++-v3/src/c++11/random.cc.orig      2020-01-20 14:55:05.507548334 -0500
-+++ gcc-9.2.0/libstdc++-v3/src/c++11/random.cc   2020-01-20 14:56:52.458268068 -0500
-@@ +46,1 @@
+--- gcc-11.2.0.orig/libstdc++-v3/src/c++11/random.cc	2021-06-01 08:53:06.000000000 +0100
++++ gcc-11.2.0/libstdc++-v3/src/c++11/random.cc	2024-11-05 18:10:56.788435004 +0000
+@@ -43,11 +43,11 @@
+ #ifdef _GLIBCXX_HAVE_SYS_IOCTL_H
+ # include <sys/ioctl.h>
+ #endif
+-
 +#undef _GLIBCXX_HAVE_LINUX_TYPES_H
+ #ifdef _GLIBCXX_HAVE_LINUX_TYPES_H
+ # include <linux/types.h>
+ #endif
+-
++#undef _GLIBCXX_HAVE_LINUX_RANDOM_H
+ #ifdef _GLIBCXX_HAVE_LINUX_RANDOM_H
+ # include <linux/random.h>
+ #endif
