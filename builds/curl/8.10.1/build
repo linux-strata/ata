@@ -16,7 +16,9 @@ mv -f _ src/Makefile.in
     --without-libidn2 \
     --without-brotli \
     --without-zstd \
-    --with-ca-bundle=/etc/ssl/cert.pem
+    --without-librtmp \
+    --disable-docs \
+    --with-ca-bundle=/etc/ssl/certs.pem
 
 make
 make DESTDIR="$1" install
