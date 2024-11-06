@@ -1,8 +1,0 @@
-#!/bin/sh -e
-
-export PATH="/usr/bin/:$PATH"
-make CONFIG_EXTRA_CFLAGS="$CFLAGS" CONFIG_EXTRA_LDFLAGS="$LDFLAGS" $MAKEFLAGS
-mkdir -p "$1/$__BASE"
-ln -s bin "$1/$__BASE/sbin"
-make CONFIG_PREFIX="$1/$__BASE" install
-rm "$1/$__BASE/sbin"

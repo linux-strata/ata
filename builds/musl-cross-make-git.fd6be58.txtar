@@ -1,0 +1,58 @@
+-- build --
+#!/bin/sh -e
+
+mv test.diff patches/gcc-11.2.0/0021-fix-linux-typesh.diff
+
+cat > config.mak << EOF
+GCC_VER = 11.2.0
+OUTPUT = $_prefix
+TARGET = x86_64-linux-musl
+COMMON_CONFIG += --disable-nls
+COMMON_CONFIG += CC="x86_64-linux-musl-gcc -static --static" CXX="x86_64-linux-musl-g++ -static --static"
+GCC_CONFIG += --disable-libquadmath --disable-decimal-float
+GCC_CONFIG += --disable-libitm
+GCC_CONFIG += --disable-fixed-point
+GCC_CONFIG += --disable-lto
+DL_CMD = curl -C - -L -o
+EOF
+
+mkdir -p "$1/$_prefix/lib"
+ln -sf . "$1/$_prefix/x86_64-linux-musl" 
+ln -sf . "$1/$_prefix/usr"
+
+make
+make DESTDIR="$1" install
+ln -sf libc.so "$1/$_prefix/lib/ld-musl-x86_64.so.1"
+ln -sf x86_64-linux-musl-gcc "$1/$_prefix/bin/gcc"
+ln -sf x86_64-linux-musl-g++ "$1/$_prefix/bin/g++"
+-- checksums --
+git:https://github.com/richfelker/musl-cross-make@fd6be58 git
+files/test.diff _
+-- libc --
+ld-musl-x86_64.so.1
+-- toolchain --
+x86_64-linux-musl
+-- needs --
+libc:musl-cross-make-git.fd6be58
+busybox-1.36.1
+make-4.4.1
+curl-8.10.1
+-- version --
+git.fd6be58
+-- files/test.diff --
+--- gcc-11.2.0.orig/libstdc++-v3/src/c++11/random.cc	2021-06-01 08:53:06.000000000 +0100
++++ gcc-11.2.0/libstdc++-v3/src/c++11/random.cc	2024-11-05 18:10:56.788435004 +0000
+@@ -43,11 +43,11 @@
+ #ifdef _GLIBCXX_HAVE_SYS_IOCTL_H
+ # include <sys/ioctl.h>
+ #endif
+-
++#undef _GLIBCXX_HAVE_LINUX_TYPES_H
+ #ifdef _GLIBCXX_HAVE_LINUX_TYPES_H
+ # include <linux/types.h>
+ #endif
+-
++#undef _GLIBCXX_HAVE_LINUX_RANDOM_H
+ #ifdef _GLIBCXX_HAVE_LINUX_RANDOM_H
+ # include <linux/random.h>
+ #endif

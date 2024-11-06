@@ -1,0 +1,28 @@
+-- build --
+#!/bin/sh -e
+
+export CFLAGS="$CFLAGS -fPIC" # bearssl doesn't build without PIC
+
+make \
+    CC="$CC" \
+    CFLAGS="$CFLAGS" \
+    LD="$CC" \
+    LDFLAGS="$LDFLAGS $CFLAGS" \
+    LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+    LDDLL="$CC" \
+    LDDLLFLAGS="$CFLAGS $LDFLAGS -shared -Wl,-soname,libbearssl.so"
+
+mkdir -p "$1/$_prefix/bin" "$1/$_prefix/include" "$1/$_prefix/lib" "$1/$_prefix/etc/ssl"
+cp -f build/brssl "$1/$_prefix/bin"
+cp -f inc/* "$1/$_prefix/include"
+cp -f build/libbearssl.a "$1/$_prefix/lib"
+cp -f build/libbearssl.so "$1/$_prefix/lib"
+cp -f cacert.pem "$1/$_prefix/etc/ssl/certs.pem"
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+-- sources --
+https://curl.haxx.se/ca/cacert.pem         189d3cf6d103185fba06d76c1af915263c6d42225481a1759e853b33ac857540 
+https://www.bearssl.org/bearssl-0.6.tar.gz 6705bba1714961b41a728dfc5debbe348d2966c117649392f8c8139efc83ff14 
+-- version --
+0.6

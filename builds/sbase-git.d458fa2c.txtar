@@ -1,0 +1,22 @@
+-- build --
+#!/bin/sh -e
+
+cat << EOF > config.mk
+PREFIX = $_prefix/usr
+MANPREFIX = $_prefix/usr/share/man
+RANLIB = ranlib
+CC = $CC
+CFLAGS = $CFLAGS -static
+LDFLAGS = $LDFLAGS -static
+EOF
+
+make sbase-box
+make DESTDIR="$1" sbase-box-install
+rm "$1/$_prefix/usr/bin/tar" # doesn't support hyphenless args or --strip-components
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+-- sources --
+git:https://git.suckless.org/sbase@d458fa2c git
+-- version --
+git.d458fa2c

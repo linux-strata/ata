@@ -1,0 +1,21 @@
+-- needs --
+make-4.4.1
+busybox-1.36.1
+toolchain:musl-cross-make-git.fd6be58
+libc:musl-1.2.5
+-- build --
+#!/bin/sh -e
+
+export LDFLAGS="$LDFLAGS -static"
+
+./configure \
+    --prefix="$_prefix" \
+    --enable-year2038 # you never know
+
+make
+make DESTDIR="$1" install
+ln -s pkgconf "$1/$_prefix/bin/pkg-config"
+-- sources --
+https://distfiles.ariadne.space/pkgconf/pkgconf-2.3.0.tar.xz 3a9080ac51d03615e7c1910a0a2a8df08424892b5f13b0628a204d3fcce0ea8b 
+-- version --
+2.3.0

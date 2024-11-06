@@ -1,0 +1,20 @@
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+m4-1.4.19
+busybox-1.36.1
+make-4.4.1
+-- build --
+#!/bin/sh -e
+
+./configure \
+    --prefix="$_prefix"
+
+make CFLAGS="$CFLAGS"
+make DESTDIR="$1" install
+
+ln -s flex "$1/$_prefix/bin/lex"
+-- sources --
+https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995 
+-- version --
+2.6.4

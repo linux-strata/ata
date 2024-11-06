@@ -1,0 +1,35 @@
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+bearssl-0.6
+zlib-1.3.1
+curl-8.10.1
+-- build --
+#!/bin/sh -e
+
+export CFLAGS="$CFLAGS -static"
+export LDFLAGS="$LDFLAGS -static"
+
+cat > config.mak << EOF
+NO_GETTEXT=YesPlease
+NO_SVN_TESTS=YesPlease
+NO_TCLTK=YesPlease
+NO_EXPAT=YesPlease
+NO_NSEC=YesPlease
+NO_PYTHON=YesPlease
+NO_PERL=YesPlease
+NO_SYS_POLL_H=1
+NO_CROSS_DIRECTORY_HARDLINKS=1
+NO_INSTALL_HARDLINKS=1
+NO_OPENSSL=YesPlease
+EOF
+
+./configure \
+    --prefix="$_prefix" \
+    --libexecdir="$_prefix/lib" \
+make
+make DESTDIR="$1" install
+-- sources --
+https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.9.5.tar.xz a4bea37ecb9a3fb5c0c8ef18c2f7eeaf8ccbcfec91f72f3bccfc6bf72a3e3902 
+-- version --
+2.9.5

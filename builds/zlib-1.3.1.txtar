@@ -1,0 +1,15 @@
+-- build --
+#!/bin/sh -e
+
+./configure \
+    --prefix="$_prefix"
+    
+make 
+make DESTDIR="$1" install
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+-- sources --
+https://zlib.net/zlib-1.3.1.tar.gz 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23 
+-- version --
+1.3.1

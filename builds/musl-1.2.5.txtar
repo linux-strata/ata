@@ -1,0 +1,23 @@
+-- build --
+#!/bin/sh -e
+
+./configure \
+    --prefix="$_prefix" \
+    --libdir="$_prefix/lib" \
+    --syslibdir="$_prefix/lib"
+
+make
+make DESTDIR="$1" install
+
+mkdir -p "$1/$_prefix/bin"
+ln -sf "../lib/ld-musl-x86_64.so.1" "$1/$_prefix/bin/ldd" # create an ldd for musl packages
+-- sources --
+https://musl.libc.org/releases/musl-1.2.5.tar.gz a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4
+-- needs --
+toolchain:musl-cross-make-git.fd6be58
+make-4.4.1
+busybox-1.36.1
+-- libc --
+ld-musl-x86_64.so.1
+-- version --
+1.2.5

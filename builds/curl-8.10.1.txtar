@@ -1,0 +1,35 @@
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+bearssl-0.6
+busybox-1.36.1
+make-4.4.1
+-- build --
+#!/bin/sh -e
+
+# static linking fix from kiss linux 
+sed 's/\(curl_LDADD =\)/\1 -all-static/' src/Makefile.in > _
+mv -f _ src/Makefile.in
+
+./configure \
+    --prefix="$_prefix" \
+    --enable-ipv6 \
+    --enable-unix-sockets \
+    --with-pic \
+    --with-bearssl \
+    --without-icu \
+    --without-libpsl \
+    --without-libidn \
+    --without-libidn2 \
+    --without-brotli \
+    --without-zstd \
+    --without-librtmp \
+    --disable-docs \
+    --with-ca-bundle=/etc/ssl/certs.pem
+
+make
+make DESTDIR="$1" install
+-- sources --
+https://curl.se/download/curl-8.10.1.tar.gz d15ebab765d793e2e96db090f0e172d127859d78ca6f6391d7eafecfd894bbc0 
+-- version --
+8.10.1

@@ -1,0 +1,16 @@
+-- build --
+#!/bin/sh -e
+
+./configure \
+    --prefix="$_prefix"
+
+make
+make DESTDIR="$1" install
+-- sources --
+https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.gz 116715552bd966c85b417c424db1bbdf639f53836eb361549d1f8d6ded5cb4c6 
+-- needs --
+libc:musl-cross-make-0.9.10
+toolchain:musl-cross-make-0.9.10
+gmp-6.3.0
+-- version --
+4.2.1
