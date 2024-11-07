@@ -25,9 +25,9 @@ make DESTDIR="$1" install
 ln -sf libc.so "$1/$_prefix/lib/ld-musl-x86_64.so.1"
 ln -sf x86_64-linux-musl-gcc "$1/$_prefix/bin/gcc"
 ln -sf x86_64-linux-musl-g++ "$1/$_prefix/bin/g++"
--- checksums --
+-- sources --
 git:https://github.com/richfelker/musl-cross-make@fd6be58 git
-files/test.diff _
+files/test.diff 81105bcd649606743395497972c143df2baaddec9833d138f983e2cb635cff17
 -- libc --
 ld-musl-x86_64.so.1
 -- toolchain --

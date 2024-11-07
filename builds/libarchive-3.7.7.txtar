@@ -1,6 +1,8 @@
 -- needs --
 libc:musl-cross-make-git.fd6be58
 toolchain:musl-cross-make-git.fd6be58
+make-4.4.1
+busybox-1.36.1
 -- build --
 #!/bin/sh
 
@@ -13,7 +15,7 @@ export LDFLAGS="$LDFLAGS -static --static"
 make DESTDIR="$1" install
 
 ln -s bsdtar "$1/$_prefix/bin/tar"
-ln -s bsdcpio "$1/$_prefixbin/cpio"
+ln -s bsdcpio "$1/$_prefix/bin/cpio"
 -- sources --
 https://libarchive.org/downloads/libarchive-3.7.7.tar.gz 4cc540a3e9a1eebdefa1045d2e4184831100667e6d7d5b315bb1cbc951f8ddff 
 -- version --

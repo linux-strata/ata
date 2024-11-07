@@ -10,11 +10,11 @@ ATA_SKIP_REBUILD=1
 
 # currently, ata operates with a single repo and a single tree
 # the directory in ATA_SRC_REPO contains source packages
-# a source package currently is a directory named $name/$ve
+# a source package currently is a txtar archive representing a directory
 # the directory must contain:
 # an executable file named 'build'
-# a newline seperated file named 'needs', where each line is a $name/$ver
-# 'needs' files must contain two special directives:
+# a newline seperated file named 'needs', where each line is a $name-$ver
+# the 'needs' files must contain two special directives:
 # libc:$pkgname
 # toolchain:$pkgname
 # these will configure the toolchain and libc used in building the package
@@ -23,7 +23,7 @@ ATA_SKIP_REBUILD=1
 # a package specified by toolchain: must a file named `toolchain` containing the triplet
 # these packages will be symlinked into the package's /lib dir
 # sources, which is a newline seperated set of source links
-# this file format is not stable. it will change in future
+# this file format is not stable. it will change in futures
 
 # no dependency resolution at the moment 
 
@@ -173,6 +173,24 @@ txtar_unpack () {
     done
 }
 
+txtar_get_file () {
+    # stdin = txtar archive
+    # $1 = filename in archive
+    R=""
+    reading_body=""
+    while IFS='' read -r xline; do
+        case $xline in
+            '-- '*' --') 
+                [ "$reading_body" ] && reading_body="" && break
+                [ "$xline" = "-- $1 --" ] && reading_body=yes && continue
+            ;;
+        esac
+        if [ "$reading_body" ]; then
+                R="$R$xline"
+        fi
+   done
+   p "$R"
+}
 
 find_pkg () {
     pkg=${1:?no package name provided}
@@ -216,11 +234,17 @@ generate_checksum () {
     src=$1
     case $src in
         git*) 
-            p "$src git"
+            p "git"
         ;;
         http[s]*)
             f=$(download_file "$src" "$pkgname")
                 
+            c=$(sha256sum "$f")
+            c=${c%  *}
+            p "$c"
+        ;;
+        *)
+            f=$(download_file "$src" "$pkgname")
             c=$(sha256sum "$f")
             c=${c%  *}
             p "$c"
@@ -277,40 +301,13 @@ download_file () {
 
 validate_package () {
         log "building $pkgname"
-        pkg_dir=$(mktemp -dt ata.tmp.XXXXXXXX)
+        pkg_dir="$tmp_base/pkgdir"
+        mkdir -p "$pkg_dir"
         txtar_unpack "$pkg_dir" < "$srcpkgfile"
         for f in build sources needs; do
             [ -f "$pkg_dir/$f" ] || err "$pkgname: no $f file"
         done
         chmod +x "$pkg_dir/build"
-}
-
-create_rpath_dir () {
-    [ "$pkg" = musl-cross-make ] && return 0
-    for f in "$DESTDIR$ATA_TREE/$pkgname/usr/bin/"*; do
-        [ -e "$f" ]     || continue
-        is_dynamic "$f" || continue
-        [ -L "$f" ]     && continue
-        patchelf "$f" --set-rpath "$ATA_TREE/$pkgname/lib"
-        mkdir -p "$DESTDIR$ATA_TREE/$pkgname/lib"
-        lib=$(patchelf --print-needed "$f")
-        [ -L "$DESTDIR$ATA_TREE/$pkgname/lib/$lib" ] && continue
-        while read -r dep; do
-            case $dep in
-                libc:*)
-                    dep=${dep#*:}
-                    read -r libc < "$DESTDIR$ATA_TREE/$dep/ata/libc"
-                    patchelf "$f" --set-interpreter "$ATA_TREE/$dep/usr/lib/$libc"
-                ;;
-            esac
-            dep=${dep#*:}
-            main files /lib "$dep" | while read -r dep_file; do
-                if [ $(filename_from_url "$dep_file") = "$lib" ]; then
-                    ln -s "$ATA_TREE/$dep/usr${dep_file#.}" "$DESTDIR$ATA_TREE/$pkgname/lib/$lib" 
-                fi    
-            done
-        done < "$pkg_dir/needs"
-    done
 }
 
 construct_compiler_flags () {
@@ -322,16 +319,16 @@ construct_compiler_flags () {
 }
 
 setup_libc () {
-    [ -e "$ATA_SRC_REPO/$1/libc" ] || err "package specified with libc: missing 'libc' file"
-    read -r libc < "$ATA_SRC_REPO/$1/libc"
+    libc=$(txtar_get_file libc < "$ATA_SRC_REPO/$1.txtar")
+    [ "$libc" ] || err "package specified with libc: missing 'libc' file"
     CFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc -isystem $ATA_TREE/$1/usr/include $CFLAGS"
     LDFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $LDFLAGS"
     CXXFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $CXXFLAGS"
 }
 
 setup_toolchain () {
-    [ -e "$ATA_SRC_REPO/$1/toolchain" ] || err "package specified with toolchain: missing 'toolchain' file"
-    read -r toolchain < "$ATA_SRC_REPO/$1/toolchain"
+    toolchain=$(txtar_get_file toolchain < "$ATA_SRC_REPO/$1.txtar")
+    [ "$toolchain" ] || err "package specified with toolchain: missing 'toolchain' file"
     CC="$toolchain-cc"
     CXX="$toolchain-c++"
 }
@@ -376,9 +373,9 @@ parse_needs () {
 }
 
 setup_build_dir () {
-    build_dir=/tmp/ata-build-$$
+    build_dir=$tmp_base/build
     mkdir -p "$build_dir"
-    destdir=/tmp/ata-dest-$$
+    destdir=$tmp_base/dest
     mkdir -p "$destdir"
     log "setting up build in $build_dir"
     cd "$build_dir"
@@ -403,7 +400,16 @@ create_binary () {
     tar czf "$dir/ata-built-$pkgname.tar.gz" .
 }
 
+tmp_cleanup () {
+    if [ "$tmp_base" ] && [ -z "$ATA_DEBUG" ]; then
+        rm -rf "$tmp_base"
+    fi
+}
+
 main () {
+    tmp_base=$(mktemp -dt ata-$$-XXXXXXXX)
+    trap tmp_cleanup INT
+    trap tmp_cleanup EXIT
     case $1 in
     usage)
         usage
@@ -434,7 +440,6 @@ main () {
             
         mkdir -p "$destdir/$ATA_TREE/$pkgname"
         cp "$srcpkgfile" "$destdir/$ATA_TREE/$pkgname"
-        
         time2=$(date +%s)
         s=$((time2 - time1))
         log "build completed in ${s}s"
@@ -485,7 +490,6 @@ EOF
         mkdir -p "$DESTDIR/$ATA_TREE/$pkgname"
         log "installing to $DESTDIR$ATA_TREE/$pkgname"
         tar xzf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkgname"
-        create_rpath_dir
         log "installed $pkgname"
         
     ;;

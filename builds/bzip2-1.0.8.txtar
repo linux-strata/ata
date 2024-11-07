@@ -1,11 +1,13 @@
 -- needs --
 libc:musl-cross-make-git.fd6be58
 toolchain:musl-cross-make-git.fd6be58
+make-4.4.1
+busybox-1.36.1
 -- build --
 #!/bin/sh -e
 
-make CC="$CC $CFLAGS $LDFLAGS" -f Makefile-libbz2_so # bzip doesn't respect $CFLAGS or $LDFLAGS
-make CC="$CC $CFLAGS -static $LDFLAGS" bzip2
+make CC="$CC $CFLAGS -fPIC $LDFLAGS" -f Makefile-libbz2_so # bzip doesn't respect $CFLAGS or $LDFLAGS
+make CC="$CC $CFLAGS -static -fPIC $LDFLAGS" bzip2
 
 mkdir -p \
     "$1/$_prefix/bin" \
@@ -27,7 +29,7 @@ ln -sf libbz2.so.1.0.8 "$1/$_prefix/lib/libbz2.so.1.0"
 cp -f bzip2.1 "$1/$_prefix/share/man/man1"
 cp -f bzlib.h "$1/$_prefix/include"
 
--- checksums --
+-- sources --
 https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269 
 -- version --
 1.0.8
