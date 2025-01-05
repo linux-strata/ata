@@ -1,0 +1,11 @@
+-- build --
+#!/bin/sh -e
+
+mkdir -p "$1/$_prefix/bin"
+cp ata "$1/$_prefix/bin"
+-- sources --
+git:https://github.com/linux-strata/ata@3b4ed0f git
+-- needs --
+busybox-1.36.1
+-- version --
+git.3b4ed0f
