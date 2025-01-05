@@ -10,21 +10,24 @@ make \
     LDFLAGS="$LDFLAGS $CFLAGS" \
     LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
     LDDLL="$CC" \
-    LDDLLFLAGS="$CFLAGS $LDFLAGS -shared -Wl,-soname,libbearssl.so"
+    LDDLLFLAGS="$CFLAGS $LDFLAGS -shared -Wl,-soname,libbearssl.so.6"
 
 mkdir -p "$1/$_prefix/bin" "$1/$_prefix/include" "$1/$_prefix/lib" "$1/$_prefix/etc/ssl"
 cp -f build/brssl "$1/$_prefix/bin"
 cp -f inc/* "$1/$_prefix/include"
 cp -f build/libbearssl.a "$1/$_prefix/lib"
 cp -f build/libbearssl.so "$1/$_prefix/lib"
+ln -s libbearssl.so "$1/$_prefix/lib/libbearssl.so.6"
 cp -f cacert.pem "$1/$_prefix/etc/ssl/certs.pem"
+
+-- sources --
+git:https://bearssl.org/git/BearSSL@3c04036 git
+https://curl.se/ca/cacert.pem a3f328c21e39ddd1f2be1cea43ac0dec819eaa20a90425d7da901a11531b3aa5
+-- version --
+git.3c04036
 -- needs --
 libc:musl-cross-make-git.fd6be58
 toolchain:musl-cross-make-git.fd6be58
 make-4.4.1
 busybox-1.36.1
--- sources --
-https://curl.haxx.se/ca/cacert.pem         189d3cf6d103185fba06d76c1af915263c6d42225481a1759e853b33ac857540
-https://www.bearssl.org/bearssl-0.6.tar.gz 6705bba1714961b41a728dfc5debbe348d2966c117649392f8c8139efc83ff14
--- version --
-0.6
+

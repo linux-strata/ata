@@ -229,7 +229,7 @@ copy_to () {
 }
 
 generate_checksum () {
-    # generate_checksum ( url )
+    # generate_checksum ( url [dest] )
     # outputs to stdout
     src=$1
     case $src in
@@ -237,7 +237,7 @@ generate_checksum () {
             p "git"
         ;;
         http[s]*)
-            f=$(download_file "$src" "$pkgname")
+            f=$(download_file "$src" "$pkgname" "$2")
                 
             c=$(sha256sum "$f")
             c=${c%  *}
@@ -278,7 +278,7 @@ download_file () {
             fi
         ;;
         http[s]://*)
-            destination=$(filename_from_url "$1")
+            destination=${3:-$(filename_from_url "$1")}
             if [ -f "$dir/$destination" ]; then
                 log "$destination already downloaded, skipping"
             else
@@ -379,10 +379,10 @@ setup_build_dir () {
     mkdir -p "$destdir"
     log "setting up build in $build_dir"
     cd "$build_dir"
-    while read -r url checksum; do
-        extract_to=$build_dir
-        f=$(download_file "$url" "$pkgname")
-        h=$(generate_checksum "$url")
+    while read -r url checksum dest; do
+        extract_to="$build_dir/$dest"
+        f=$(download_file "$url" "$pkgname" "$dest")
+        h=$(generate_checksum "$url" "$dest")
         [ "$h" = "$checksum" ] || err "checksum for $url doesn't match"
         #[ -z "$dir" ] || extract_to="$build_dir/$dir"
         mkdir -p "$extract_to"
@@ -458,7 +458,7 @@ main () {
         [ -e "$pkgname.txtar" ] && err "package $pkgname already exists here"
         cat << EOF
 -- build --
-#!/bin/sh
+#!/bin/sh -e
 -- sources --
 $checksum
 -- version --

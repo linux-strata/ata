@@ -1,7 +1,7 @@
 -- needs --
 libc:musl-cross-make-git.fd6be58
 toolchain:musl-cross-make-git.fd6be58
-bearssl-0.6
+bearssl-git.3c04036
 busybox-1.36.1
 make-4.4.1
 -- build --
