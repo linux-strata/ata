@@ -5,12 +5,11 @@ zlib-1.3.1
 curl-8.10.1
 busybox-1.36.1
 make-4.4.1
-bearssl-git.3c04036
 -- build --
 #!/bin/sh -e
 
-#export CFLAGS="$CFLAGS -static"
-#export LDFLAGS="$LDFLAGS -static"
+export CFLAGS="$CFLAGS -static"
+export LDFLAGS="$LDFLAGS -static"
 
 cat > config.mak << EOF
 NO_GETTEXT=YesPlease
@@ -31,8 +30,9 @@ EOF
     --prefix="$_prefix" \
     --libexecdir="$_prefix/lib" \
 
-make
+make LIBS="$(curl-config --static-libs) libgit.a xdiff/lib.a -lz"
 make DESTDIR="$1" install
+
 -- sources --
 https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.9.5.tar.xz a4bea37ecb9a3fb5c0c8ef18c2f7eeaf8ccbcfec91f72f3bccfc6bf72a3e3902 
 -- version --

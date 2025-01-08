@@ -1,0 +1,24 @@
+-- build --
+#!/bin/sh -e
+
+./Configure \
+    --prefix="$_prefix" \
+    --libdir="$_prefix/lib" \
+    --openssldir="$_prefix/etc/ssl" \
+    no-unit-test \
+    shared \
+    linux-x86_64
+
+make
+make DESTDIR="$1" install
+
+-- sources --
+https://github.com/openssl/openssl/releases/download/openssl-3.4.0/openssl-3.4.0.tar.gz e15dda82fe2fe8139dc2ac21a36d4ca01d5313c75f99f46c4e8a27709b7294bf
+-- version --
+3.4.0
+-- needs --
+toolchain:musl-cross-make-git.fd6be58
+libc:musl-1.2.5
+make-4.4.1
+busybox-1.36.1
+perl-5.40.0
