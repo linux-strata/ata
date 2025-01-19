@@ -39,12 +39,16 @@ cd gcc-build
     --disable-libmudflap \
     --disable-libsanitizer \
     --disable-werror \
-    --disable-fixed-point \
-    --enable-bootstrap \
-    --host=x86_64-pc-linux-musl \
-    --target=x86_64-pc-linux-musl
+    --disable-fixed-point
+#    --enable-bootstrap
+#    --host=x86_64-pc-linux-musl \
+#    --target=x86_64-pc-linux-musl
 
 make
 make DESTDIR="$1" install
+
+find "$1" -name libgtkpeer.a  -exec rm -f {} +
+find "$1" -name libgjsmalsa.a -exec rm -f {} +
+find "$1" -name libgij.a      -exec rm -f {} +
 -- version --
 13.3.0
