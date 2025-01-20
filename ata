@@ -20,10 +20,10 @@ ATA_SKIP_REBUILD=1
 # these will configure the toolchain and libc used in building the package
 # a package specified by libc: must contain a file named `libc` containing the path
 # to the dynamic linker
-# a package specified by toolchain: must a file named `toolchain` containing the triplet
+# a package specified by toolchain: must have a file named `toolchain` containing the triplet
 # these packages will be symlinked into the package's /lib dir
 # sources, which is a newline seperated set of source links
-# this file format is not stable. it will change in futures
+# this file format is not stable. it will change in future
 
 # no dependency resolution at the moment 
 
@@ -311,7 +311,7 @@ validate_package () {
 }
 
 construct_compiler_flags () {
-    rpath="$ATA_TREE/$pkgname/lib"
+    rpath="$ATA_TREE/$pkgname/lib:$ATA_TREE/$pkgname/usr/lib"
     CFLAGS="-L$rpath -Wl,-rpath,$rpath"
     CXXFLAGS="-L$rpath -Wl,-rpath,$rpath"
     LDFLAGS="-L$rpath -Wl,-rpath,$rpath"
@@ -383,7 +383,7 @@ setup_build_dir () {
         extract_to="$build_dir/$dest"
         f=$(download_file "$url" "$pkgname" "$dest")
         h=$(generate_checksum "$url" "$dest")
-        [ "$h" = "$checksum" ] || err "checksum for $url doesn't match"
+        [ "$h" = "$checksum" ] || err "expected checksum '$checksum', got '$h'"
         #[ -z "$dir" ] || extract_to="$build_dir/$dir"
         mkdir -p "$extract_to"
         copy_to "$f" "$extract_to"
@@ -456,7 +456,7 @@ main () {
             checksum="$3 $(generate_checksum $3)" 
         fi
         [ -e "$pkgname.txtar" ] && err "package $pkgname already exists here"
-        cat << EOF
+        cat << EOF > "$pkgname.txtar"
 -- build --
 #!/bin/sh -e
 -- sources --
@@ -465,7 +465,6 @@ $checksum
 $version
 -- needs --
 EOF
-        err "not implemented"
     ;;
     checksum)
         shift 1 

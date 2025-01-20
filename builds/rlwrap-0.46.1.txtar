@@ -1,0 +1,21 @@
+-- build --
+#!/bin/sh -e
+
+./configure \
+    --prefix="$_prefix"
+
+# For some reason, the C version isn't detected correctly, causing a compilation error due to bool being undefined.
+# Since the definition is just 'typedef int bool;', we do that ourselves.
+make CFLAGS="$CFLAGS -Dbool=int" LDFLAGS="$LDFLAGS -static"
+make DESTDIR="$1" install
+-- sources --
+https://github.com/hanslub42/rlwrap/releases/download/0.46.1/rlwrap-0.46.1.tar.gz 2711986a1248f6ac59e2aecf5586205835970040d300a42b4bf8014397e73e37
+-- version --
+0.46.1
+-- needs --
+libc:musl-cross-make-git.fd6be58
+toolchain:musl-cross-make-git.fd6be58
+busybox-1.36.1
+make-4.4.1
+readline-8.2.13
+ncurses-6.5

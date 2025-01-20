@@ -1,0 +1,37 @@
+-- build --
+#!/bin/sh -e
+
+export CFLAGS="$CFLAGS -fPIC"
+
+./configure \
+    --prefix="$_prefix" \
+    --with-shared \
+    --with-static \
+    --enable-pc-files \
+    --disable-rpath-hack \
+    --enable-widec \
+    --with-termlib
+
+make
+make DESTDIR="$1" install
+
+for lib in ncurses form panel menu tinfo; do
+    rm -f "$1/$_prefix/lib/lib${lib}.so"
+    printf '%s\n' "INPUT(-l${lib}w)" > "$1/$_prefix/lib/lib${lib}.so"
+    chmod 755 "$1/$_prefix/lib/lib${lib}.so"
+    ln -sf "lib${lib}w.a" "$1/$_prefix/lib/lib${lib}.a"
+    ln -sf "lib${lib}w.so.6" "$1/$_prefix/lib/lib${lib}.so.6"
+done
+
+# Some packages look for libcurses instead of libncurses when building.
+printf '%s\n' "INPUT(-lncursesw)" > "$1/$_prefix/lib/libcursesw.so"
+ln -s libncurses.so "$1/$_prefix/lib/libcurses.so"
+-- sources --
+https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz 136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6
+-- version --
+6.5
+-- needs --
+libc:musl-1.2.5
+toolchain:musl-cross-make-git.fd6be58
+make-4.4.1
+busybox-1.36.1
