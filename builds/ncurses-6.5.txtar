@@ -1,7 +1,8 @@
 -- build --
 #!/bin/sh -e
 
-export CFLAGS="$CFLAGS -fPIC"
+export CFLAGS="$CFLAGS -fPIC -Wl,-rpath=$_prefix/lib"
+# this needs to be fixed
 
 ./configure \
     --prefix="$_prefix" \

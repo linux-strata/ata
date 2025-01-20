@@ -1,23 +1,21 @@
 -- build --
 #!/bin/sh -e
 
-export LDFLAGS="$LDFLAGS -lncursesw"
-export CC="$CC $CFLAGS -Os -lncursesw"
+export CC="$CC $CFLAGS -Os"
 export OILS_PARALLEL_BUILD=1
 
 sed -i 's/ cc / $CC /g' ./configure 
 sed -i 's/out_dir=/#out_dir=/g' _build/oils.sh
 sed -i 's/local out_dir/local out_dir=_bin/g' _build/oils.sh
-sed -i 's/^link_flags=.*/link_flags="-static $LDFLAGS "/' build/ninja-rules-cpp.sh
-sed -i 's|cc_quiet build/detect-readline.c|$CC build/detect-readline.c|g' ./configure 
+sed -i 's/^link_flags=.*/link_flags="-static $LDFLAGS -lreadline -lncursesw -ltinfo"/' build/ninja-rules-cpp.sh
+sed -i 's|cc_quiet build/detect-readline.c|$CC -lreadline -lncursesw -ltinfow build/detect-readline.c|g' ./configure 
 #sed -i 's/^link_flags=.*/link_flags="-static "/' build/ninja-rules-cpp.sh
 
-echo $CFLAGS
 ./configure \
     --prefix="$_prefix" \
     --with-readline 
 
-_build/oils.sh --cxx "$CXX -lncursesw"
+_build/oils.sh --cxx "$CXX"
 
 mkdir -p "$1/$_prefix/bin"
 

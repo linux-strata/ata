@@ -6,9 +6,10 @@ export CFLAGS="$CFLAGS -fPIC"
 #patch -p0 < fixlink.patch
 
 ./configure \
-    --prefix="$_prefix"
+    --prefix="$_prefix" \
+    --enable-multibyte
 
-make SHLIB_LIBS=-lncurses
+make SHLIB_LIBS=-lncursesw
 make DESTDIR="$1" install
 
 #    --with-curses \

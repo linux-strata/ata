@@ -311,7 +311,7 @@ validate_package () {
 }
 
 construct_compiler_flags () {
-    rpath="$ATA_TREE/$pkgname/lib:$ATA_TREE/$pkgname/usr/lib"
+    rpath="$ATA_TREE/$pkgname/lib" # TODO: implement a more general solution
     CFLAGS="-L$rpath -Wl,-rpath,$rpath"
     CXXFLAGS="-L$rpath -Wl,-rpath,$rpath"
     LDFLAGS="-L$rpath -Wl,-rpath,$rpath"
@@ -359,7 +359,7 @@ parse_needs () {
         CPPFLAGS="$CPPFLAGS -I$ATA_TREE/$dep/usr/include"
         MPATH="$ATA_TREE/$dep/usr/bin:$MPATH"
         C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-        PKG_CONFIG_PATH="$ATA_TREE/$dep/usr/lib/pkgconfig:$PKG_CONFIG_PATH"        
+        PKG_CONFIG_PATH="$ATA_TREE/$dep/usr/lib/pkgconfig:$PKG_CONFIG_PATH"
         # This code exists to enable building to another host to work.
         # Linking will fail without it. 
         # Builds will eventually be switched over to an isolated environment.
@@ -432,7 +432,7 @@ main () {
             PATH="$MPATH" \
             ATA_TREE="$ATA_TREE" \
             MAKEFLAGS="${MAKEFLAGS:--j10}" \
-            LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+            LD_LIBRARY_PATH="$ATA_TREE/$pkgname/lib" \
             C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
             PKG_CONFIG_PATH="${PKG_CONFIG_PATH%:}" \
             _prefix="$ATA_TREE/$pkgname/usr" \
