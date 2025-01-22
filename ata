@@ -312,9 +312,9 @@ validate_package () {
 
 construct_compiler_flags () {
     rpath="$ATA_TREE/$pkgname/lib" # TODO: implement a more general solution
-    CFLAGS="-L$rpath -Wl,-rpath,$rpath"
-    CXXFLAGS="-L$rpath -Wl,-rpath,$rpath"
-    LDFLAGS="-L$rpath -Wl,-rpath,$rpath"
+    CFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
+    CXXFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
+    LDFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
     parse_needs
 }
 

@@ -1,0 +1,26 @@
+-- build --
+#!/bin/sh -e
+
+export PATH="$PATH:$PWD"
+:>makeinfo
+chmod +x makeinfo
+
+sh
+./configure \
+    --with-readline \
+    --prefix="$_prefix"
+
+make
+make DESTDIR="$1" install
+
+-- sources --
+https://ftp.gnu.org/gnu/bc/bc-1.08.1.tar.xz 515430115b3334c636317503460a0950dff79940aa3259ce2c1aa67c2881d023
+-- version --
+1.08.1
+-- needs --
+toolchain:musl-cross-make-git.fd6be58
+libc:musl-1.2.5
+make-4.4.1
+busybox-1.36.1
+ncurses-6.5
+readline-8.2.13
