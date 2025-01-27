@@ -82,6 +82,18 @@ proc nth_component (n, string, delim=" ") {
     p $[string.split (delim)[n]]
 }
 
+func at(A,B) {
+    return (A[B])
+}
+
+func cat(A,B) {
+    if (type(A) === "Str") {
+        return (A++B)
+    }
+    call A->extend(B)
+    return (A)
+}
+
 func W(list) {
     if (type(list) === "Str") {
         return ([list])
@@ -92,6 +104,22 @@ func W(list) {
 func default(d, k, v) {
     if (get(d, k) === null) {
         setvar d[k] = v
+    }
+}
+
+func fadof (d,k,a,b,f) { # fetch and function or default, a more general form of default()
+    if (get(d, k) === null) {
+        setvar d[k] = a
+    } else {
+        setvar d[k] = f(d[k],b)
+    }
+}
+
+func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
+    if (get(d, k) === null) {
+        setvar d[k] = b
+    } else {
+        setvar d[k] = (d[k]++b)
     }
 }
 
@@ -282,10 +310,16 @@ download_file () {
 
 
 proc construct_compiler_flags (;build) {
-    var rpath = ATA_TREE ++ "/" ++ build["name"] ++ "/lib" # TODO: implement a more general solution
-    var CFLAGS = "-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
-    var CXXFLAGS = "-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
-    var LDFLAGS = "-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
+    var rpath = "$ATA_TREE/$[build["name"]]/lib" # TODO: implement a more general solution
+    var flags = "-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath "
+    # We shove this set of flags in everything, with the hopes that something will listen.
+    # Some things respect LDFLAGS, but not CFLAGS. For others, it's the other way around.
+    # There's no guaranteeing how these flags will be used, so it's important to get
+    # this set into everything.
+    call default(build, 'env', {}) # It should be unset at this point. Best be safe, though.
+    call sdd(build.env, 'CFLAGS',   flags)
+    call sdd(build.env, 'CXXFLAGS', flags)
+    call sdd(build.env, 'LDFLAGS',  flags)
     parse_needs (build)
 }
 
@@ -306,40 +340,84 @@ setup_toolchain () {
 
 proc parse_needs (;build) {
     mkdir -p "$ATA_TREE/$[build['name']]/lib" # Annoying, but neccessary.
-    setvar build.env = {}
+    var dep = ""
     # Parser for the 'needs' format.
     for line in (build.needs) {
         if (line === "") { continue }
         
         var line = line => split(":")
-        
+
         if (len(line) > 1) {
-            var subject = line->pop()
+            setvar dep = line->pop()
             for mod in (line) {
+                
                 case (mod) {
                     libc {
+                        if ("${libc:-}" !== '') {
+                            err "libc set twice in $[build['name']]"
+                        }
+                        read --all < "$ATA_SRC_REPO/$dep.txtar" 
+                        # I should be able to use find_pkg for this.
+                        var libc = txtar_read(_reply.split(u'\n'))
+                        if (libc.libc === null) {
+                            err "$dep, specified as libc, has no 'libc' file"
+                        }
+                        setvar libc = libc.libc[0]
                         
-                        p "$subject is libc"
+                        call sdd( \
+                          build.env,    \
+                          'CFLAGS',     \
+                          "-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc " ++ \
+                          "-isystem $ATA_TREE/$dep/usr/include "
+                        )
+                        
+                        call sdd( \
+                          build.env,    \
+                          'LDFLAGS',    \
+                          "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                        )
+                        
+                        call sdd( \
+                          build.env,    \
+                          'CXXFLAGS',   \
+                          "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                        )
+                        p "$dep is libc"
                         
                     }
                     toolchain {
-                        p "$subject is toolchain"
+                        if ("${toolchain:-}" !== '') {
+                            err "toolchain set twice in $[build['name']]"
+                        }
+                        read --all < "$ATA_SRC_REPO/$dep.txtar" 
+                        # I should be able to use find_pkg for this.
+                        var toolchain = txtar_read(_reply.split(u'\n'))
+                        if (toolchain === null) {
+                            err "$dep, specified as toolchain, has no 'toolchain' file"
+                        }
+                        setvar toolchain = toolchain.toolchain[0] 
+                        call sdd(build.env, 'CC',   "$toolchain-cc")
+                        call sdd(build.env, 'CXX',  "$toolchain-c++")
+                        call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
                     }
                     lib {
-                        p "$subject is a c library"
+                        call sdd(build.env, 'C_INCLUDE_PATH', "$ATA_TREE/$dep/usr/include:")
+                        call sdd(build.env, 'CFLAGS', "-I$ATA_TREE/$dep/usr/include ")
+                        call sdd(build.env, 'PKG_CONFIG_PATH', "$ATA_TREE/$dep/usr/lib/pkgconfig:")
                     }
                 }
            }
                     
         } else {
+            setvar dep = line[0] # for consistency's sake
             # unadorned packages are added to $PATH
-            call build.env => default('path', "") => append("$ATA_TREE/$[line[0]]/usr/bin:")
-            # callbuild.env.path = build.env.path ++ "$ATA_TREE/$[line[0]]/usr/bin:"
-            
+            call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
         }
     }
     json write (build)
     exit 0
+    
+   
     
     
     
