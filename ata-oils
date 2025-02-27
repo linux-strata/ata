@@ -1,19 +1,6 @@
 #!/ata/pkg/oils-0.26.0/usr/bin/ysh
 
-# prototype #2
-
-var ATA_TREE = "/ata/pkg"
-
-var ATA_SRC_REPO = get(ENV, "ATA_SRC_REPO")
-: ${ATA_SRC_REPO:=/ata/src/builds}
-
-
-var ATA_WORLDS = "${ATA_WORLDS:-/ata/worlds}"
-
-var ATA_SKIP_REBUILD = 1
-
-setglobal SRCPKG_SUFFIX = ".txtar"
-
+# prototype #3
 
 # currently, ata operates with a single repo and a single tree
 # the directory in ATA_SRC_REPO contains source packages
@@ -61,7 +48,31 @@ err () {
     exit 1
 }
 
-usage () {
+func W(list) {
+    if (type(list) === "Str") {
+        return ([list])
+    }
+    return (list)
+}
+
+func default(d, k, v) {
+    if (get(d, k) === null) {
+        setvar d[k] = v
+    }
+    return (d)
+}
+
+var ATA_TREE = "/ata/pkg" # For now, this one isn't alterable.
+
+call default (ENV, "ATA_SRC_REPO", /ata/src/builds)
+call default (ENV, XDG_CACHE_HOME, $HOME/.local/cache)
+call default (ENV, "DESTDIR", "")
+call default (ENV, "ATA_WORLDS", "/ata/worlds")
+call default (ENV, "ATA_SKIP_REBUILD", 1)
+
+setglobal SRCPKG_SUFFIX = ".txtar"
+
+proc usage () {
     cat << 'EOF'
 usage: ata <command> [<args>]
 
@@ -82,38 +93,15 @@ proc nth_component (n, string, delim=" ") {
     p $[string.split (delim)[n]]
 }
 
-func at(A,B) {
-    return (A[B])
-}
-
-func cat(A,B) {
-    if (type(A) === "Str") {
-        return (A++B)
-    }
-    call A->extend(B)
-    return (A)
-}
-
-func W(list) {
-    if (type(list) === "Str") {
-        return ([list])
+func shape(list, n, fill=null) {
+    if (n > len(list)) {
+        for _ in (len(list) ..< n) {
+            call list->append(fill)
+        }
     }
     return (list)
 }
 
-func default(d, k, v) {
-    if (get(d, k) === null) {
-        setvar d[k] = v
-    }
-}
-
-func fadof (d,k,a,b,f) { # fetch and function or default, a more general form of default()
-    if (get(d, k) === null) {
-        setvar d[k] = a
-    } else {
-        setvar d[k] = f(d[k],b)
-    }
-}
 
 func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
     if (get(d, k) === null) {
@@ -121,6 +109,7 @@ func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict De
     } else {
         setvar d[k] = (d[k]++b)
     }
+    return (d)
 }
 
 file_equal () {
@@ -196,19 +185,20 @@ proc txtar_unpack (;txtar) {
 }
 
 # returns a path to a txtar file
-proc find_pkg (package) {
-    p $[ :| $ATA_SRC_REPO/$package-*.txtar|[0] ]
+proc find_pkg (;path, build) {
+    var b
+    read --all < $[ :| $[ENV.ATA_SRC_REPO]/$path-*.txtar|[0] ]
+    setvar b = txtar_read(_reply.split(u'\n'))
+    setvar b["name"] = path => trim(".txtar") => trimStart(/ .+'/' /) ++ "-" ++ W(b.version)[0]
+    setvar b["path"] = :| $[ENV.ATA_SRC_REPO]/$path-*.txtar |[0] 
+    for file in build needs version {
+        if (get(b, file) === "") {
+            err "invalid package: missing $file"
+        }
+    }
+    call build->setValue(b)
 }
 
-func parse_package (txtar) {
-        #log "building $pkgname"
-        
-        for file in build needs version {
-            if (get(txtar, file) === "") {
-                err "invalid package: missing $file"
-            }
-        }
-}
 
 copy_to () {
     # copy_to ( path, dest )
@@ -216,6 +206,7 @@ copy_to () {
   
     # if its an archive, extract it
     # if it's a directory, copy the files
+    log $1 $2
     case $1 in
         *.tar*|*.t*)
             # NB. not very robust checking: anything is a valid file extension
@@ -225,7 +216,7 @@ copy_to () {
             # NB. --strip-components is not always present
         ;;
         *)
-            if [ -d "$1" ]; then
+            if test -d "$1"; then
                 log "copying dir $1"
                 cp -r "$1/." "$2" 
             else
@@ -236,47 +227,34 @@ copy_to () {
     esac
 }
 
-generate_checksum () {
-    # generate_checksum ( url [dest] )
+proc generate_checksum (path) {
     # outputs to stdout
-    src=$1
-    case $src in
+    case $path in
         git*) 
             p "git"
         ;;
-        http[s]*)
-            f=$(download_file "$src" "$pkgname" "$2")
-                
-            c=$(sha256sum "$f")
-            c=${c%  *}
-            p "$c"
-        ;;
         *)
-            f=$(download_file "$src" "$pkgname")
-            c=$(sha256sum "$f")
-            c=${c%  *}
-            p "$c"
+            var c = $(sha256sum "$path") 
+            p "${c%  *}"
         ;;
     esac
 }
 
-download_file () {
-    # download_file( url, pkg-ver )
-    : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
-    
-    dir="$XDG_CACHE_HOME/ata/$2/src"
+
+proc download_file (;url, build, destination="") {
+    var dir="$[ENV.XDG_CACHE_HOME]/ata/$[build.name]/src"
     mkdir -p "$dir"
 
-    log "URL: $1"
-    case $1 in
+    log "URL: $url"
+    case $url in
         git:*)
             # git:https://git.com/repo@commit
-            url=${1%@*}
-            url=${url#git:}
-            commit=${1#*@}
-            destination=$(filename_from_url "$url")
-            destination="${destination}@${commit}"
-            if [ -d "${dir}/${destination}" ]; then
+            setvar url = ${url%@*}
+            setvar url = ${url#git:}
+            var commit = ${url#*@}
+            setvar destination = $(filename_from_url "$url")
+            setvar destination = "${destination}@${commit}"
+            if test -d "${dir}/${destination}" ; then
                 log "$destination already cloned, skipping"
             else
                 log "cloning $url"
@@ -286,22 +264,24 @@ download_file () {
             fi
         ;;
         http[s]://*)
-            destination=${3:-$(filename_from_url "$1")}
-            if [ -f "$dir/$destination" ]; then
+            if (destination === "") {
+                setvar destination = $(filename_from_url "$url")
+            }
+            if test -f "$dir/$destination" ; then
                 log "$destination already downloaded, skipping"
             else
                 log "downloading $destination"
-                curl "$1" -sSLo "$dir/$destination"
+                curl "$url" -sSLo "$dir/$destination"
             fi
         ;;
         *://*)
-            err "scheme in $1 not supported"
+            err "scheme in $url not supported"
         ;;
         *)
             log "no scheme, assuming file"
-            [ -f "$pkg_dir/$1" ] || err "$1 not file"
-            destination="$pkg_dir/$1"
-            dir=""
+            
+            setvar destination = "$url"
+            setvar dir=""
         ;;
     esac
     p "$dir/$destination"
@@ -316,30 +296,20 @@ proc construct_compiler_flags (;build) {
     # Some things respect LDFLAGS, but not CFLAGS. For others, it's the other way around.
     # There's no guaranteeing how these flags will be used, so it's important to get
     # this set into everything.
-    call default(build, 'env', {}) # It should be unset at this point. Best be safe, though.
-    call sdd(build.env, 'CFLAGS',   flags)
-    call sdd(build.env, 'CXXFLAGS', flags)
-    call sdd(build.env, 'LDFLAGS',  flags)
+    
+    # It should be unset at this point. Best be safe, though.
+    call default(build, 'env', {}) \
+        => sdd('CFLAGS',   flags) \
+        => sdd('CXXFLAGS', flags) \
+        => sdd('LDFLAGS',  flags)
     parse_needs (build)
 }
 
-setup_libc () {
-    var libc=$(txtar_get_file libc < "$ATA_SRC_REPO/$1.txtar")
-    [ "$libc" ] || err "package specified with libc: missing 'libc' file"
-    var CFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc -isystem $ATA_TREE/$1/usr/include $CFLAGS"
-    var LDFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $LDFLAGS"
-    var CXXFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $CXXFLAGS"
-}
-
-setup_toolchain () {
-    var toolchain=$(txtar_get_file toolchain < "$ATA_SRC_REPO/$1.txtar")
-    [ "$toolchain" ] || err "package specified with toolchain: missing 'toolchain' file"
-    var CC="$toolchain-cc"
-    var CXX="$toolchain-c++"
-}
 
 proc parse_needs (;build) {
-    mkdir -p "$ATA_TREE/$[build['name']]/lib" # Annoying, but neccessary.
+    mkdir -p "$ATA_TREE/$[build.name]/lib" # Annoying, but neccessary.
+    # But, not for long.
+    # We can bind-mount into a tmpfs and then unshare-chroot into it, creating an isolated environment.
     var dep = ""
     # Parser for the 'needs' format.
     for line in (build.needs) {
@@ -349,141 +319,122 @@ proc parse_needs (;build) {
 
         if (len(line) > 1) {
             setvar dep = line->pop()
-            for mod in (line) {
-                
-                case (mod) {
-                    libc {
-                        if ("${libc:-}" !== '') {
-                            err "libc set twice in $[build['name']]"
-                        }
-                        read --all < "$ATA_SRC_REPO/$dep.txtar" 
-                        # I should be able to use find_pkg for this.
-                        var libc = txtar_read(_reply.split(u'\n'))
-                        if (libc.libc === null) {
-                            err "$dep, specified as libc, has no 'libc' file"
-                        }
-                        setvar libc = libc.libc[0]
-                        
-                        call sdd( \
-                          build.env,    \
-                          'CFLAGS',     \
-                          "-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc " ++ \
-                          "-isystem $ATA_TREE/$dep/usr/include "
-                        )
-                        
-                        call sdd( \
-                          build.env,    \
-                          'LDFLAGS',    \
-                          "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
-                        )
-                        
-                        call sdd( \
-                          build.env,    \
-                          'CXXFLAGS',   \
-                          "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
-                        )
-                        p "$dep is libc"
-                        
-                    }
-                    toolchain {
-                        if ("${toolchain:-}" !== '') {
-                            err "toolchain set twice in $[build['name']]"
-                        }
-                        read --all < "$ATA_SRC_REPO/$dep.txtar" 
-                        # I should be able to use find_pkg for this.
-                        var toolchain = txtar_read(_reply.split(u'\n'))
-                        if (toolchain === null) {
-                            err "$dep, specified as toolchain, has no 'toolchain' file"
-                        }
-                        setvar toolchain = toolchain.toolchain[0] 
-                        call sdd(build.env, 'CC',   "$toolchain-cc")
-                        call sdd(build.env, 'CXX',  "$toolchain-c++")
-                        call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
-                    }
-                    lib {
-                        call sdd(build.env, 'C_INCLUDE_PATH', "$ATA_TREE/$dep/usr/include:")
-                        call sdd(build.env, 'CFLAGS', "-I$ATA_TREE/$dep/usr/include ")
-                        call sdd(build.env, 'PKG_CONFIG_PATH', "$ATA_TREE/$dep/usr/lib/pkgconfig:")
-                    }
-                }
-           }
-                    
         } else {
             setvar dep = line[0] # for consistency's sake
-            # unadorned packages are added to $PATH
-            call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
+            setvar line = ["path"]
+            
+        }
+        # This will later support `libc, toolchain:`, but doesn't at present.
+        for mod in (line) {
+            case (mod) {
+                libc {
+                    if ("${libc:-}" !== '') {
+                        err "libc set twice in $[build['name']]"
+                    }
+                    read --all < "$[ENV.ATA_SRC_REPO]/$dep.txtar" 
+                    # I should be able to use find_pkg for this.
+                    var libc = txtar_read(_reply.split(u'\n'))
+                    if (libc.libc === null) {
+                        err "$dep, specified as libc, has no 'libc' file"
+                    }
+                    setvar libc = libc.libc[0]
+                        
+                    call build.env \
+                    => sdd('CFLAGS',
+                      "-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc " ++ \
+                      "-isystem $ATA_TREE/$dep/usr/include "
+                    ) \
+                    => sdd(
+                      'LDFLAGS',
+                      "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                    ) \
+                    => sdd( \
+                       'CXXFLAGS',   \
+                       "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                    )
+                    
+                }&
+                lib {
+                    call build.env \
+                    => sdd('C_INCLUDE_PATH', "$ATA_TREE/$dep/usr/include:") \
+                    => sdd('CFLAGS', "-I$ATA_TREE/$dep/usr/include ") \
+                    => sdd('PKG_CONFIG_PATH', "$ATA_TREE/$dep/usr/lib/pkgconfig:")
+                    # This will be removed in isolated builds.
+                    
+                    for f in "$ATA_TREE/$dep"/usr/lib/* {
+                        [ -e "$f" ] || continue
+                        log $f
+                        ln -sf "$f" "$ATA_TREE/$[build.name]/lib"
+                    }
+                }
+                toolchain {
+                    if ("${toolchain:-}" !== '') {
+                        err "toolchain set twice in $[build['name']]"
+                    }
+                    read --all < "$[ENV.ATA_SRC_REPO]/$dep.txtar" 
+                    # I should be able to use find_pkg for this.
+                    var toolchain = txtar_read(_reply.split(u'\n'))
+                    if (toolchain === null) {
+                        err "$dep, specified as toolchain, has no 'toolchain' file"
+                    }
+                    setvar toolchain = toolchain.toolchain[0] 
+                    call build.env \
+                    => sdd('CC',   "$toolchain-cc") \
+                    => sdd('CXX',  "$toolchain-c++") \
+                    => sdd('PATH', "$ATA_TREE/$dep/usr/bin:")
+                }
+                lib {
+                    call build.env \
+                    => sdd('C_INCLUDE_PATH', "$ATA_TREE/$dep/usr/include:") \
+                    => sdd('CFLAGS', "-I$ATA_TREE/$dep/usr/include ") \
+                    => sdd('PKG_CONFIG_PATH', "$ATA_TREE/$dep/usr/lib/pkgconfig:")
+                    # This will be removed in isolated builds.
+                    
+                    for f in "$ATA_TREE/$dep"/usr/lib/* {
+                        [ -e "$f" ] || continue
+                        log $f
+                        ln -sf "$f" "$ATA_TREE/$[build.name]/lib"
+                    }
+                }
+                path {
+                    # unadorned packages are added to $PATH
+                    call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
+                }
+            }
         }
     }
-    json write (build)
-    exit 0
-    
-   
-    
-    
-    
-    #while read -r dep; do
-     #   case $dep in
-      #      libc:*) 
-       #         [ "$libc" ] && err "$pkgname/needs: libc set twice"
-        #        var libc = ${dep#libc:}
-         #       dep=$libc
-          #  ;;
-           # toolchain:*)
-            #    [ "$toolchain" ] && err "$pkgname/needs: toolchain set twice"
-             #   toolchain=${dep#toolchain:}
-              #  dep=$toolchain
-            #;;
-            #*:*)
-            #    log "$pkgname/needs: directive ${dep%:*} unrecognised. ignoring"
-            #;;
-  #      esac
-   #     [ -e "$ATA_TREE/$dep" ] || err "dependency $dep not found"
-    #    [ "$odep" = "$dep" ] && continue
-     #   odep=$dep
-      #  CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
-       # CXXFLAGS="$CXXFLAGS -I$ATA_TREE/$dep/usr/include"
-        #CPPFLAGS="$CPPFLAGS -I$ATA_TREE/$dep/usr/include"
-        #MPATH="$ATA_TREE/$dep/usr/bin:$MPATH"
-        #C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-        #PKG_CONFIG_PATH="$ATA_TREE/$dep/usr/lib/pkgconfig:$PKG_CONFIG_PATH"
-        # This code exists to enable building to another host to work.
-        # Linking will fail without it. 
-        # Builds will eventually be switched over to an isolated environment.
-   #     for f in "$ATA_TREE/$dep"/usr/lib/*; do
-    #        [ -e "$f" ] || continue
-    #        ln -sf "$f" "$ATA_TREE/$pkgname/lib"
-   #     done
-   # done < "$pkg_dir/needs"
-   # [ -z "$libc" ] || setup_libc "$libc"
-   # [ -z "$toolchain" ] || setup_toolchain "$toolchain"
 }
 
-setup_build_dir () {
-    build_dir=$tmp_base/build
-    mkdir -p "$build_dir"
-    destdir=$tmp_base/dest
-    mkdir -p "$destdir"
-    log "setting up build in $build_dir"
-    cd "$build_dir"
-    while read -r url checksum dest; do
-        extract_to="$build_dir/$dest"
-        f=$(download_file "$url" "$pkgname" "$dest")
-        h=$(generate_checksum "$url" "$dest")
-        [ "$h" = "$checksum" ] || err "expected checksum '$checksum', got '$h'"
-        #[ -z "$dir" ] || extract_to="$build_dir/$dir"
+proc setup_build_dir (;build) {
+    setvar build.builddir = "$tmp_base/build"
+    mkdir -p $[build.builddir]
+    setvar build.destdir = "$tmp_base/dest"
+    mkdir -p $[build.destdir]
+    
+    log "setting up build in $[build.builddir]"
+    
+    cd $[build.builddir]
+    for line in (build.sources) {
+        var x = line.split(" ") => shape(3, "")
+        var url = x[0]
+        var checksum = x[1]
+        var dest = x[2]
+        var extract_to = "$[build.builddir]/${dest:-}"
+        var f = $(download_file (url, build, dest))
+        var h = $(generate_checksum "$f")
+        test "$h" = "$checksum" || err "expected checksum '$checksum', got '$h'"
         mkdir -p "$extract_to"
         copy_to "$f" "$extract_to"
-    done < "$pkg_dir/sources"
+    }
+    
 
 }
 
-create_binary () {
-    : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
-    
-    dir="$XDG_CACHE_HOME/ata/$pkgname/built"
+proc create_binary (;build) {
+    var dir="$[ENV.XDG_CACHE_HOME]/ata/$[build.name]/built"
     mkdir -p "$dir"
-    cd "$destdir/$ATA_TREE/$pkgname"
-    tar czf "$dir/ata-built-$pkgname.tar.gz" .
+    cd "$[build.destdir]/$ATA_TREE/$[build.name]"
+    tar czf "$dir/ata-built-$[build.name].tar.gz" .
 }
 
 tmp_cleanup () {
@@ -496,6 +447,7 @@ main () {
     setglobal tmp_base = $(mktemp -dt ata-$$-XXXXXXXX)
     trap tmp_cleanup INT
     trap tmp_cleanup EXIT
+    var build = {}
     if (len(ARGV) < 1) {
         usage
         err "requires at least one argument"
@@ -506,47 +458,38 @@ main () {
     ;;
     build)
         shift 1
-        var path = $(find_pkg "$1")
-        read --all < $path
-        var build = txtar_read(_reply.split(u'\n'))
+        find_pkg (ARGV[1], &build)
+
+        p "building $[build.name]"
         
-        call parse_package (build)
-        
-        setvar build["name"] = path => trim(".txtar") => trimStart(/ .+'/' /)
-        p "building $[build["name"]]"
-        
-        var pkg_dir = "$tmp_base=/pkgdir"
+        var pkg_dir = "$tmp_base/pkgdir"
         mkdir -p $pkg_dir
         cd $pkg_dir { txtar_unpack (build) }
         
         chmod +x "$pkg_dir/build"
         
         construct_compiler_flags (build)
-        setup_build_dir
+        setup_build_dir (build)
 
         time1=$(date +%s)
-        log "starting build in $build_dir"
-        env -i \
-            CC="$CC" \
-            CXX="$CXX" \
-            CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS" \
-            PATH="$MPATH" \
-            ATA_TREE="$ATA_TREE" \
-            MAKEFLAGS="${MAKEFLAGS:--j10}" \
-            LD_LIBRARY_PATH="$ATA_TREE/$pkgname/lib" \
-            C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
-            PKG_CONFIG_PATH="${PKG_CONFIG_PATH%:}" \
-            _prefix="$ATA_TREE/$pkgname/usr" \
-            "$pkg_dir/build" "$destdir" "$pkgname"
+        log "starting build in $[build.builddir]"
+        
+        var env = []
+        for k, v in (build.env) {
+            call env->append("${k}=$[v.trimEnd(':')]")
+        }
+        cd "$tmp_base/build" {
+            env -i @env \
+                _prefix="$ATA_TREE/$[build.name]/usr" \
+                "$pkg_dir/build" "$[build.destdir]" "$[build.name]"
+        }
             
-        mkdir -p "$destdir/$ATA_TREE/$pkgname"
-        cp "$srcpkgfile" "$destdir/$ATA_TREE/$pkgname"
-        time2=$(date +%s)
+        mkdir -p "$[build.destdir]/$ATA_TREE/$[build.name]"
+        cp -r "$[build.path]" "$[build.destdir]/$ATA_TREE/$[build.name]"
+        var time2 = $(date +%s)
         var s = time2 - time1 
         log "build completed in ${s}s"
-        create_binary 
+        create_binary (build)
     ;;
     scaffold)
         # Creates an empty ata package
@@ -570,6 +513,7 @@ $version
 EOF
     ;;
     checksum)
+        exit 1
         shift 1 
         find_pkg "$1"
         shift 1
@@ -577,22 +521,20 @@ EOF
     ;;
     install)
         shift 1
-        find_pkg "$1"
-        
-        : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+        find_pkg (ARGV[1], &build)
     
-        pkgf="$XDG_CACHE_HOME/ata/$pkgname/built/ata-built-$pkgname.tar.gz"
+        var pkgf = "$[ENV.XDG_CACHE_HOME]/ata/$[build.name]/built/ata-built-$[build.name].tar.gz"
         
-        if ! [ -e "$pkgf" ] || [ "$ATA_SKIP_REBUILD" != 1 ]; then
+        if ! test -e "$pkgf" || [ "$ATA_SKIP_REBUILD" != 1 ]; then
             log "archive $pkgf not found, building"
-            main build "$pkgname"
+            main build "$[build.name]"
         fi
-        [ -e "$pkgf" ] || err "archive $pkgf not created"
-        log "found archive for $pkgname: $pkgf"
-        mkdir -p "$DESTDIR/$ATA_TREE/$pkgname"
-        log "installing to $DESTDIR$ATA_TREE/$pkgname"
-        tar xzf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkgname"
-        log "installed $pkgname"
+        test -e "$pkgf" || err "archive $pkgf not created"
+        log "found archive for $[build.name]: $pkgf"
+        mkdir -p "$DESTDIR/$ATA_TREE/$[build.name]"
+        log "installing to $DESTDIR$ATA_TREE/$[build.name]"
+        tar xzf "$pkgf" -C "$DESTDIR/$ATA_TREE/$[build.name]"
+        log "installed $[build.name]"
         
     ;;
     resolve)
