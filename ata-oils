@@ -19,10 +19,7 @@
 # sources, which is a newline seperated set of source links
 # this file format is not stable. it will change in future
 
-# srcpkgfile
-
 # no dependency resolution at the moment 
-
 
 nl='
 '
@@ -64,13 +61,19 @@ func default(d, k, v) {
 
 var ATA_TREE = "/ata/pkg" # For now, this one isn't alterable.
 
-call default (ENV, "ATA_SRC_REPO", /ata/src/builds)
-call default (ENV, XDG_CACHE_HOME, $HOME/.local/cache)
+call default (ENV, "ATA_SRC_REPO", "/ata/src/builds")
+call default (ENV, "XDG_CACHE_HOME", "$[ENV.HOME]/.local/cache")
 call default (ENV, "DESTDIR", "")
 call default (ENV, "ATA_WORLDS", "/ata/worlds")
 call default (ENV, "ATA_SKIP_REBUILD", 1)
 
 setglobal SRCPKG_SUFFIX = ".txtar"
+
+# These regexes determine valid package names. Currently, we are very permissive.
+# I will be shrinking this in future.
+
+setvar Pc = / [ a-z A-Z '_' '-' 0-9 '.' ] /
+setvar VALID = / Pc+ '-' Pc+ /
 
 proc usage () {
     cat << 'EOF'
@@ -79,18 +82,21 @@ usage: ata <command> [<args>]
 The following commands are currently supported:
     build     <pkg> [<version>]    Compile a binary package from source
     install   <pkg> [<version>]    Install a compiled package
-    checksums <pkg> [<version>]    Generate checksums of a package's sources
     world build  <worldfile>       Construct an ata world from a worldfile
     world env    <worldfile>       Enter an environment specified by a worldfile
 EOF
+}
+
+proc nth_component (n, string, delim=" ") {
+    p $[string.split (delim)[n]]
 }
 
 proc filename_from_url (url) {
     nth_component -1 $url "/"
 }
 
-proc nth_component (n, string, delim=" ") {
-    p $[string.split (delim)[n]]
+proc version_from_name (name) {
+    nth_component -1 $name "-"
 }
 
 func shape(list, n, fill=null) {
@@ -495,29 +501,30 @@ main () {
         # Creates an empty ata package
         # Takes a name, version, and a source url, and generates an empty package in this directory.
         shift 1
-        name=${1:?no name provided}
-        version=${2:?no version provided}
-        pkgname="$name-$version"
-        if [ "$3" ]; then
-            checksum="$3 $(generate_checksum $3)" 
-        fi
-        [ -e "$pkgname.txtar" ] && err "package $pkgname already exists here"
+        call shape(ARGV, 4)
+        if (ARGV[1] === null) {
+            log 'usage: ata scaffold $name-$version [$url]'
+            err "name and version not provided"
+        }
+        var pkgname = ARGV[1]
+        if (pkgname !~ VALID) {
+            err "invalid package name: $pkgname"
+        }
+        
+        if (ARGV[2] !== null) {
+            var checksum = "$[ARGV[2]] $(generate_checksum $[ARGV[2]])" 
+        }
+        
+        test -e "$pkgname.txtar" && err "package $pkgname already exists here"
         cat << EOF > "$pkgname.txtar"
 -- build --
 #!/bin/sh -e
 -- sources --
-$checksum
+${checksum:-}
 -- version --
-$version
+$(version_from_name $pkgname)
 -- needs --
 EOF
-    ;;
-    checksum)
-        exit 1
-        shift 1 
-        find_pkg "$1"
-        shift 1
-        generate_checksum "$1"
     ;;
     install)
         shift 1
@@ -537,51 +544,8 @@ EOF
         log "installed $[build.name]"
         
     ;;
-    resolve)
-        shift 1
-        find_pkg "$1"
-        p "$ATA_TREE/$pkgname"
-    ;;
-    world)
-        shift 1
-        # ata worlds are identified by a sha256 of their sorted worldfile, for now
-        # ata worlds are a /usr created from symlinking the contents several packages together
-        # this may, in future, be implemented via FUSE.
-        # worlds can be found in $ATA_WORLDS
-        # no dependency resolution is needed
-        case $1 in
-            build)
-                shift 1
-                [ -z "$1" ] && err "missing worldfile argument"
-                id=$(sort -u "$1" | sha256sum)
-                id=${id%% *}
-                if [ ! -d "$DESTDIR/$ATA_WORLDS/$id" ]; then
-                    log "building world $id"
-                    base="$ATA_WORLDS/$id"
-                    mkdir -p "$DESTDIR/$base"
-                    log "merging into $DESTDIR$base"
-                    while read -r pkg; do
-                        #[ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
-                        log "merging $pkg from $1"
-                        recursive_file_merge "$ATA_TREE/$pkg/usr" "$base" "$DESTDIR"
-                        
-                    done < "$1"
-                    log "world $id created"
-                else
-                    log "world $id exists, skipping"
-                fi
-            ;;
-            env)
-                shift 1
-                [ -z "$1" ] && err "missing worldfile argument"
-                cmd=$2
-                : "${cmd:=sh}"
-                main world build "$1"
-                # shell doesn't scope variables
-                env -i PATH="$ATA_WORLDS/$id/bin" "$ATA_WORLDS/$id/bin/$cmd"
-            ;;
-        esac
-    ;;
+    # I've temporarily cut away the "world" functionality,
+    # as it needs to be reworked in light of other functionality
     *)
         usage
         err "command $1 not implemented"
