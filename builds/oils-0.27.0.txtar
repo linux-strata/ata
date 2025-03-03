@@ -1,0 +1,35 @@
+-- build --
+#!/bin/sh -e
+
+export CC="$CC $CFLAGS -Os"
+export OILS_PARALLEL_BUILD=1
+export CFLAGS="$CFLAGS -static"
+export CXXFLAGS="$CXXFLAGS -static"
+export LDFLAGS="$LDFLAGS -static -lreadline -lncursesw -ltinfow"
+
+sed -i 's/out_dir=/#out_dir=/g' _build/oils.sh
+sed -i 's/local out_dir/local out_dir=_bin/g' _build/oils.sh
+
+./configure \
+    --prefix="$_prefix" \
+    --with-readline \
+    --cxx-for-configure="$CC"
+
+_build/oils.sh \
+    --cxx "$CXX"
+
+mkdir -p "$1/$_prefix/bin"
+
+cp -f _bin/oils-for-unix.stripped "$1/$_prefix/bin/oils-for-unix"
+ln -s oils-for-unix "$1/$_prefix/bin/osh"
+ln -s oils-for-unix "$1/$_prefix/bin/ysh"
+
+-- sources --
+https://oils.pub/download/oils-for-unix-0.27.0.tar.gz ab539162dffc1694fd5ae89c00e405cc5f7b73660159ec5b269bedea631df17d
+-- version --
+0.27.0
+-- needs --
+toolchain, libc: musl-cross-make-git.fd6be58
+lib: ncurses-6.5
+lib: readline-8.2.13
+make: busybox-1.36.1
