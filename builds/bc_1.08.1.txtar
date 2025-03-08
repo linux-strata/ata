@@ -17,10 +17,10 @@ https://ftp.gnu.org/gnu/bc/bc-1.08.1.tar.xz 515430115b3334c636317503460a0950dff7
 -- version --
 1.08.1
 -- needs --
-toolchain:musl-cross-make-git.fd6be58
-libc:musl-1.2.5
-make-4.4.1
-busybox-1.36.1
-ncurses-6.5
-readline-8.2.13
-flex-2.6.4
+toolchain, make: musl-cross-make-git.fd6be58
+libc: musl-1.2.5
+make: make-4.4.1
+make: busybox-1.36.1
+lib: ncurses-6.5
+lib: readline-8.2.13
+make: flex-2.6.4

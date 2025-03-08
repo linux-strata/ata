@@ -1,12 +1,6 @@
-#!/bin/sh -e
+#!/ata/pkg/oils-0.26.0/usr/bin/ysh
 
-# prototype #2
-
-export ATA_TREE="/ata/pkg"
-export ATA_SRC_REPO="${ATA_SRC_REPO:-/ata/src/builds}"
-
-export ATA_WORLDS="${ATA_WORLDS:-/ata/worlds}"
-ATA_SKIP_REBUILD=1
+# prototype #3
 
 # currently, ata operates with a single repo and a single tree
 # the directory in ATA_SRC_REPO contains source packages
@@ -27,17 +21,18 @@ ATA_SKIP_REBUILD=1
 
 # no dependency resolution at the moment 
 
+
 nl='
 '
 
 p () {
     # p ( str... )
-    printf "%s\n" "$@"
+    write -- "$@"
 }
 
 pd () {
     # pd ( str, [fd]:-1 )
-    printf "%s\n" "$1" >&"${2:-1}"
+    write -- "$1" >&"${2:-1}"
 }
 
 log () {
@@ -51,53 +46,78 @@ err () {
     exit 1
 }
 
-usage () {
+func W(list) {
+    if (type(list) === "Str") {
+        return ([list])
+    }
+    return (list)
+}
+
+func default(d, k, v) {
+    if (get(d, k) === null) {
+        setvar d[k] = v
+    }
+    return (d)
+}
+
+var ATA_TREE = "/ata/pkg" # For now, this one isn't alterable.
+
+call default (ENV, "ATA_SRC_REPO", "/ata/src/builds")
+call default (ENV, "XDG_CACHE_HOME", "$[ENV.HOME]/.local/cache")
+call default (ENV, "DESTDIR", "")
+call default (ENV, "ATA_WORLDS", "/ata/worlds")
+call default (ENV, "ATA_SKIP_REBUILD", 1)
+call default (ENV, "ATA_REPO", "/ata/repo")
+call default (ENV, "ATA_BINCACHE", "$[ENV.XDG_CACHE_HOME]/ata/built")
+call default (ENV, "ATA_ISOLATED_BUILD", 0)
+
+setglobal SRCPKG_SUFFIX = ".txtar"
+
+# These regexes determine valid package names. Currently, we are very permissive.
+# I will be shrinking this in future.
+
+setvar Pc = / [ a-z A-Z '_' '-' 0-9 '.' ] /
+setvar VALID = / Pc+ '-' Pc+ /
+
+proc usage () {
     cat << 'EOF'
 usage: ata <command> [<args>]
 
 The following commands are currently supported:
     build     <pkg> [<version>]    Compile a binary package from source
     install   <pkg> [<version>]    Install a compiled package
-    checksums <pkg> [<version>]    Generate checksums of a package's sources
-    world build  <worldfile>       Construct an ata world from a worldfile
-    world env    <worldfile>       Enter an environment specified by a worldfile
 EOF
 }
 
-filename_from_url () {
-    # filename_from_url ( url )
-    old_ifs=$IFS
-    IFS='/'
-    set -f
-    #shellcheck disable=SC2048,SC2086
-    set -- $*
-    
-    for a in "$@"; do
-        :
-    done
-    
-    p "$a"
-    set +f
-    IFS=$old_ifs
+proc nth_component (n, string, delim=" ") {
+    p $[string.split (delim)[n]]
 }
 
-nth_component () {
-    # nth_component ( n string delim )
-    # NB. negative N counted from end
-    # 0 uninclusive
-    n=$1
-    string=$2
-    old_ifs=$IFS
-    IFS=${3:-/}
-    set -f
-    #shellcheck disable=SC2048,SC2086
-    set -- $string
-    
-    shift $(( (n + $#) % $# ))
-    
-    p "$1"
-    set +f
-    IFS=$old_ifs
+proc filename_from_url (url) {
+    nth_component -1 $url "/"
+}
+
+proc version_from_name (name) {
+    nth_component -1 $name "-"
+}
+
+func shape(list, n, fill=null) {
+    if (n > len(list)) {
+        for _ in (len(list) ..< n) {
+            call list->append(fill)
+        }
+    }
+    return (list)
+}
+
+
+func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
+    if (get(d, k) === null) {
+        setvar d[k] = b
+    } else {
+        setvar d[k] = (d[k]++b)
+    }
+    return (d)
 }
 
 file_equal () {
@@ -110,6 +130,7 @@ recursive_file_merge () {
     # recursive_file_merge ( source, destination, [DESTDIR] )
     # create a recursive link between two directories.
     # mirror created directories, softlink files.
+    # This function is orphaned.
     find "$3/$1" | while read -r abs; do
         rel=${abs#"$3/$1"}
         if [ -L "$abs" ]; then
@@ -135,79 +156,74 @@ is_dynamic () {
     esac
 }
 
-txtar_unpack () {
-    # takes an archive on stdin and optionally a directory as $1
-    # will create and unpack stdin in PWD or $1 if provided
-    [ "$#" -gt 1 ] && printf '%s\n' "unpack: too many arguments" && exit 1 
-    if [ "$1" ]; then
-        if ! mkdir -p "$1"; then
-            printf '%s\n' "couldn't create directory $1"
-            exit 1
-        else
-            cd "$1"
-        fi
-    fi
-
-    reading_body=""    
-    while IFS='' read -r line; do
-            case $line in
-                '-- '*' --')
-                    reading_body=yes
-                    if [ "$reading_body" ]; then
-                        filename=${line#--}
-                        filename=${filename%--}
-                        # trim_string from https://github.com/dylanaraps/pure-sh-bible
-                        filename=${filename#${filename%%[![:space:]]*}}
-                        filename=${filename%${filename##*[![:space:]]}}
-                        case $filename in
-                            */*)
-                                mkdir -p "${filename%/*}"
-                            ;;
-                        esac
-                        :>"$filename"
-                    fi
-                ;;
-                *)
-                    [ "$reading_body" ] && printf '%s\n' "$line" >> "$filename"
-            esac
-    done
+# usage: read --all < ./xyz.txtar
+# txtar_read(_reply.split(u'\n'))
+# or, to get the contents of filename
+# txtar_read(_reply.split(u'\n'), filename) 
+func txtar_read (lines, select="") {
+    var archive = {}
+    var file = ""
+    var body = false
+    for line in (lines) {
+        if (line ~ /'-- '.+' --'/) {
+            setvar file = line => trim(/' '? '--' ' '?/) => trim()
+            setvar archive[file] = []
+            setvar body = true
+        } else {
+            $body || continue
+            setvar archive[file] = archive[file] ++ [line]            
+        }
+    }
+    if (select) {
+        return (archive[select])
+    }
+    return (archive)
+    
 }
 
-txtar_get_file () {
-    # stdin = txtar archive
-    # $1 = filename in archive
-    R=""
-    reading_body=""
-    while IFS='' read -r xline; do
-        case $xline in
-            '-- '*' --') 
-                [ "$reading_body" ] && reading_body="" && break
-                [ "$xline" = "-- $1 --" ] && reading_body=yes && continue
-            ;;
-        esac
-        if [ "$reading_body" ]; then
-                R="$R$xline"
-        fi
-   done
-   p "$R"
+# takes the input of txtar_read, and unpacks it into CWD
+proc txtar_unpack (;txtar) {
+    for filename, file in (txtar) {
+        if (filename ~ /.+'/'.+/ ) {
+            mkdir -p ${filename%%/*}
+        }
+        : > $filename
+        
+        write -- @[W(file)] > $filename  
+    }
 }
 
-find_pkg () {
-    pkg=${1:?no package name provided}
-    for f in "$ATA_SRC_REPO/$pkg"*.txtar; do
-        pkgname=${f##*/}
-        pkgname=${pkgname%.txtar}
-    done
-    srcpkgfile=$f
-    [ -f "$srcpkgfile" ] || err "$pkg not found"
+proc find_srcpkg (;name, build) {
+    var b
+    var path
+    if (name => split('_')[-1] ~ /([0-9]+|'git')'.'*/) {
+        # Is the last component of the name a version number?
+        # If so, take the package name verbatim
+        setvar path = "$[ENV.ATA_SRC_REPO]/$name.txtar"
+        
+    } else {
+        # otherwise, run a test
+        setvar path = :| $[ENV.ATA_SRC_REPO]/$name_*.txtar |[0]
+    }
+    read --all < $path
+    setvar b = txtar_read(_reply.split(u'\n'))
+    setvar b["name"] = path => trim(".txtar") => trimStart(/ .+'/' /)
+    setvar b["path"] = path
+    for file in build needs version {
+        if (get(b, file) === "") {
+            err "invalid package: missing $file"
+        }
+    }
+    call build->setValue(b)
 }
 
 copy_to () {
     # copy_to ( path, dest )
-    # download_file -> copy_to
+    # download_src -> copy_to
   
     # if its an archive, extract it
     # if it's a directory, copy the files
+    # This function will be rewritten.
     case $1 in
         *.tar*|*.t*)
             # NB. not very robust checking: anything is a valid file extension
@@ -217,7 +233,7 @@ copy_to () {
             # NB. --strip-components is not always present
         ;;
         *)
-            if [ -d "$1" ]; then
+            if test -d "$1"; then
                 log "copying dir $1"
                 cp -r "$1/." "$2" 
             else
@@ -228,47 +244,34 @@ copy_to () {
     esac
 }
 
-generate_checksum () {
-    # generate_checksum ( url [dest] )
+proc generate_checksum (path) {
     # outputs to stdout
-    src=$1
-    case $src in
+    case $path in
         git*) 
             p "git"
         ;;
-        http[s]*)
-            f=$(download_file "$src" "$pkgname" "$2")
-                
-            c=$(sha256sum "$f")
-            c=${c%  *}
-            p "$c"
-        ;;
         *)
-            f=$(download_file "$src" "$pkgname")
-            c=$(sha256sum "$f")
-            c=${c%  *}
-            p "$c"
+            var c = $(sha256sum "$path") 
+            p "${c%  *}"
         ;;
     esac
 }
 
-download_file () {
-    # download_file( url, pkg-ver )
-    : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
-    
-    dir="$XDG_CACHE_HOME/ata/$2/src"
+
+proc download_src (;url, build, destination="") {
+    var dir="$[ENV.XDG_CACHE_HOME]/ata/src/$[build.name]"
     mkdir -p "$dir"
 
-    log "URL: $1"
-    case $1 in
+    log "URL: $url"
+    case $url in
         git:*)
             # git:https://git.com/repo@commit
-            url=${1%@*}
-            url=${url#git:}
-            commit=${1#*@}
-            destination=$(filename_from_url "$url")
-            destination="${destination}@${commit}"
-            if [ -d "${dir}/${destination}" ]; then
+            setvar url = ${url%@*}
+            setvar url = ${url#git:}
+            var commit = ${url#*@}
+            setvar destination = $(filename_from_url "$url")
+            setvar destination = "${destination}@${commit}"
+            if test -d "${dir}/${destination}" ; then
                 log "$destination already cloned, skipping"
             else
                 log "cloning $url"
@@ -278,269 +281,316 @@ download_file () {
             fi
         ;;
         http[s]://*)
-            destination=${3:-$(filename_from_url "$1")}
-            if [ -f "$dir/$destination" ]; then
+            if (destination === "") {
+                setvar destination = $(filename_from_url "$url")
+            }
+            if test -f "$dir/$destination" ; then
                 log "$destination already downloaded, skipping"
             else
                 log "downloading $destination"
-                curl "$1" -sSLo "$dir/$destination"
+                curl "$url" -sSLo "$dir/$destination"
             fi
         ;;
         *://*)
-            err "scheme in $1 not supported"
+            err "scheme in $url not supported"
         ;;
         *)
             log "no scheme, assuming file"
-            [ -f "$pkg_dir/$1" ] || err "$1 not file"
-            destination="$pkg_dir/$1"
-            dir=""
+            
+            setvar destination = "$url"
+            setvar dir=""
         ;;
     esac
     p "$dir/$destination"
 }
 
-validate_package () {
-        log "building $pkgname"
-        pkg_dir="$tmp_base/pkgdir"
-        mkdir -p "$pkg_dir"
-        txtar_unpack "$pkg_dir" < "$srcpkgfile"
-        for f in build sources needs; do
-            [ -f "$pkg_dir/$f" ] || err "$pkgname: no $f file"
-        done
-        chmod +x "$pkg_dir/build"
+proc construct_compiler_flags (;build) {
+    var rpath = "$ATA_TREE/$[build["name"]]/lib" # TODO: implement a more general solution
+    var flags = "-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath "
+    # We shove this set of flags in everything, with the hopes that something will listen.
+    # Some things respect LDFLAGS, but not CFLAGS. For others, it's the other way around.
+    # There's no guaranteeing how these flags will be used, so it's important to get
+    # this set into everything.
+    
+    # It should be unset at this point. Best be safe, though.
+    call default(build, 'env', {})
+    # => chaining was attempted here, fruitlessly.
+    call   sdd(build.env, 'CFLAGS',   flags) \
+        => sdd('CXXFLAGS', flags) \
+        => sdd('LDFLAGS',  flags) \
+        => sdd('LD_LIBRARY_PATH', rpath)
+
+    # build.meta represents runtime dependencies.    
+    setvar build["meta"] = {}
+    
+
+    mkdir -p "$ATA_TREE/$[build.name]/lib" # Annoying, but neccessary.
+    # But, not for long.
+    # We can bind-mount into a tmpfs and then unshare-chroot into it, creating an isolated environment.
+    var dep = ""
+    # Parser for the 'needs' format.
+    for line in (build.needs) {
+        if (line === "") { continue }
+        
+        var line = line => split(/':'|','/)
+        if (len(line) > 1) {
+            setvar dep = line->pop() => trim()
+            if (line[0] === "make") {
+                call line->append("path")
+                call line->reverse()
+            }
+        } else {
+            setvar dep = line[0] # for consistency's sake
+            setvar line = ["path"]
+            
+        }
+        for mod in (line) {
+            var mod = mod => trim()
+            case $mod in
+                libc)
+                    if ("${libc:-}" !== '') {
+                        err "libc set twice in $[build['name']]"
+                    }
+                    var libc
+                    find_srcpkg (dep, &libc)
+                    if (libc.libc === null) {
+                        err "$dep, specified as libc, has no 'libc' file"
+                    }
+                    setvar libc = libc.libc[0]
+                        
+                    call build.env \
+                    => sdd('CFLAGS',
+                      "-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc " ++ \
+                      "-isystem $ATA_TREE/$dep/usr/include "
+                    ) \
+                    => sdd(
+                      'LDFLAGS',
+                      "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                    ) \
+                    => sdd( \
+                       'CXXFLAGS',   \
+                       "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
+                    )
+                    
+                ;&
+                lib)
+                    call build.env \
+                    => sdd('C_INCLUDE_PATH', "$ATA_TREE/$dep/usr/include:") \
+                    => sdd('CFLAGS', "-I$ATA_TREE/$dep/usr/include ") \
+                    => sdd('CXXFLAGS', "-I$ATA_TREE/$dep/usr/include ") \
+                    => sdd('PKG_CONFIG_PATH', "$ATA_TREE/$dep/usr/lib/pkgconfig:")
+                    # This will be removed in isolated builds.
+                    
+                    for f in "$ATA_TREE/$dep"/usr/lib/* {
+                        test -e "$f"  || continue
+                        ln -sf "$f" "$ATA_TREE/$[build.name]/lib"
+                    }
+                    setvar build.meta[dep] = ""
+                ;;
+                toolchain)
+                    if ("${toolchain:-}" !== '') {
+                        err "toolchain set twice in $[build['name']]"
+                    }
+                    var toolchain
+                    find_srcpkg (dep, &toolchain)
+                    if (toolchain === null) {
+                        err "$dep, specified as toolchain, has no 'toolchain' file"
+                    }
+                    setvar toolchain = toolchain.toolchain[0] 
+                    call build.env \
+                    => sdd('CC',   "$toolchain-cc") \
+                    => sdd('CXX',  "$toolchain-c++") \
+                ;&
+                path)
+                    # unadorned packages are added to $PATH
+                    call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
+                    setvar build.meta[dep] = ""
+                ;;
+                make)
+                    # Make dependencies are only needed at build time.
+                    call build.meta->erase(dep)
+                
+            esac
+        }
+    }
 }
 
-construct_compiler_flags () {
-    rpath="$ATA_TREE/$pkgname/lib" # TODO: implement a more general solution
-    CFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
-    CXXFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
-    LDFLAGS="-L$rpath -Wl,-rpath,$rpath -Wl,-rpath-link,$rpath"
-    parse_needs
-}
-
-setup_libc () {
-    libc=$(txtar_get_file libc < "$ATA_SRC_REPO/$1.txtar")
-    [ "$libc" ] || err "package specified with libc: missing 'libc' file"
-    CFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc -isystem $ATA_TREE/$1/usr/include $CFLAGS"
-    LDFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $LDFLAGS"
-    CXXFLAGS="-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc $CXXFLAGS"
-}
-
-setup_toolchain () {
-    toolchain=$(txtar_get_file toolchain < "$ATA_SRC_REPO/$1.txtar")
-    [ "$toolchain" ] || err "package specified with toolchain: missing 'toolchain' file"
-    CC="$toolchain-cc"
-    CXX="$toolchain-c++"
-}
-
-parse_needs () {
-    mkdir -p "$ATA_TREE/$pkgname/lib"
-    while read -r dep; do
-        case $dep in
-            libc:*) 
-                [ "$libc" ] && err "$pkgname/needs: libc set twice"
-                libc=${dep#libc:}
-                dep=$libc
-            ;;
-            toolchain:*)
-                [ "$toolchain" ] && err "$pkgname/needs: toolchain set twice"
-                toolchain=${dep#toolchain:}
-                dep=$toolchain
-            ;;
-            *:*)
-                log "$pkgname/needs: directive ${dep%:*} unrecognised. ignoring"
-            ;;
-        esac
-        [ -e "$ATA_TREE/$dep" ] || err "dependency $dep not found"
-        [ "$odep" = "$dep" ] && continue
-        odep=$dep
-        CFLAGS="$CFLAGS -I$ATA_TREE/$dep/usr/include"
-        CXXFLAGS="$CXXFLAGS -I$ATA_TREE/$dep/usr/include"
-        CPPFLAGS="$CPPFLAGS -I$ATA_TREE/$dep/usr/include"
-        MPATH="$ATA_TREE/$dep/usr/bin:$MPATH"
-        C_INCLUDE_PATH="$ATA_TREE/$dep/usr/include:$C_INCLUDE_PATH"
-        PKG_CONFIG_PATH="$ATA_TREE/$dep/usr/lib/pkgconfig:$PKG_CONFIG_PATH"
-        # This code exists to enable building to another host to work.
-        # Linking will fail without it. 
-        # Builds will eventually be switched over to an isolated environment.
-        for f in "$ATA_TREE/$dep"/usr/lib/*; do
-            [ -e "$f" ] || continue
-            ln -sf "$f" "$ATA_TREE/$pkgname/lib"
-        done
-    done < "$pkg_dir/needs"
-    [ -z "$libc" ] || setup_libc "$libc"
-    [ -z "$toolchain" ] || setup_toolchain "$toolchain"
-}
-
-setup_build_dir () {
-    build_dir=$tmp_base/build
-    mkdir -p "$build_dir"
-    destdir=$tmp_base/dest
-    mkdir -p "$destdir"
-    log "setting up build in $build_dir"
-    cd "$build_dir"
-    while read -r url checksum dest; do
-        extract_to="$build_dir/$dest"
-        f=$(download_file "$url" "$pkgname" "$dest")
-        h=$(generate_checksum "$url" "$dest")
-        [ "$h" = "$checksum" ] || err "expected checksum '$checksum', got '$h'"
-        #[ -z "$dir" ] || extract_to="$build_dir/$dir"
+proc setup_build_dir (;build) {
+    setvar build.builddir = "$tmp_base/build"
+    mkdir -p $[build.builddir]
+    setvar build.destdir = "$tmp_base/dest"
+    mkdir -p $[build.destdir]
+    
+    log "setting up build in $[build.builddir]"
+    
+    cd $[build.builddir]
+    for line in (build.sources) {
+        var x = line.split(" ") => shape(3, "")
+        var url = x[0]
+        var checksum = x[1]
+        var dest = x[2]
+        var extract_to = "$[build.builddir]/${dest:-}"
+        var f = $(download_src (url, build, dest))
+        var h = $(generate_checksum "$f")
+        test "$h" = "$checksum" || err "expected checksum '$checksum', got '$h'"
         mkdir -p "$extract_to"
         copy_to "$f" "$extract_to"
-    done < "$pkg_dir/sources"
-
-}
-
-create_binary () {
-    : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+    }
     
-    dir="$XDG_CACHE_HOME/ata/$pkgname/built"
-    mkdir -p "$dir"
-    cd "$destdir/$ATA_TREE/$pkgname"
-    tar czf "$dir/ata-built-$pkgname.tar.gz" .
+
 }
 
 tmp_cleanup () {
-    if [ "$tmp_base" ] && [ -z "$ATA_DEBUG" ]; then
+    if (get(ENV, "ATA_DEBUG") !== null) {
+        log "TMP: $tmp_base"
+        return
+    }
+    if ("$tmp_base" !== "") {
         rm -rf "$tmp_base"
-    fi
+    }
+}
+
+proc do_build (;pkgname, build) {
+    find_srcpkg (pkgname, &build)
+    log "building $[build.name]"
+        
+    var pkg_dir = "$tmp_base/pkgdir"
+    mkdir -p $pkg_dir
+    cd $pkg_dir { txtar_unpack (build) }
+    chmod +x "$pkg_dir/build"
+    
+    construct_compiler_flags (build)
+    setup_build_dir (build)
+    var time1 = $(date +%s)
+    log "starting build in $[build.builddir]"
+        
+    var env = []
+    for k, v in (build.env) {
+        call env->append("${k}=$[v.trimEnd(':')]")
+        log "${k}=$[v.trimEnd(':')]"
+    }
+    
+    cd "$tmp_base/build" {
+    env -i @env \
+        _prefix="$ATA_TREE/$[build.name]/usr" \
+        "$pkg_dir/build" "$[build.destdir]" "$[build.name]"
+    }
+            
+    mkdir -p "$[build.destdir]/$ATA_TREE/$[build.name]"
+    cp -r "$[build.path]" "$[build.destdir]/$ATA_TREE/$[build.name]"
+    var time2 = $(date +%s)
+    log "build completed in $[time2 - time1]s"
+    
+    mkdir -p "$[ENV.ATA_BINCACHE]"
+    cd "$[build.destdir]/$ATA_TREE/$[build.name]"
+    tar cJf "$[ENV.ATA_BINCACHE]/$[build.name].tar.xz" . 
+    # Write the meta file for the build here.
+    
+    {
+        for d in (keys(build.meta)) {
+            p "dep: $d"
+        }
+        p "version: $[W(build.version)[0]]"
+    } > "$[ENV.ATA_BINCACHE]/$[build.name].meta"
+
+}
+
+proc do_fetch(;pkgname) {
+    # This doesn't take a 'var build'.
+    # Search remote (local) repositories for packages, add them to /ata/repo.
+    mkdir -p "/ata/repo"
+    locate (pkgname, ENV.ATA_BINCACHE)
+}
+
+
+proc locate (;pkgname, dir) {
+    # This proc locates a package-appropriate filename within a directory.
+    # 'pkgname=musl' doesn't result in finding musl-cross-make.
+    # It sorts git packages above numbers, and orders numerically.
+    # A repository will not have multiple git packages, so it doesn't have git sorting logic.
+    # Used in `ata fetch` and `ata add`, as well as `find_srcpkg`. Contains selection logic?
+    # I'm just going to ban `_` in package names, and use `_` to deliminate pkg_version
+    var d = :| "$dir/$pkgname"* |
+    for f in (d) {
+        if ((f => trim("$dir/") => split("-")[:-1]) != $pkgname 
+             
+    }
 }
 
 main () {
-    tmp_base=$(mktemp -dt ata-$$-XXXXXXXX)
+    setglobal tmp_base = $(mktemp -dt ata-$$-XXXXXXXX)
     trap tmp_cleanup INT
     trap tmp_cleanup EXIT
-    case $1 in
+    var build = {}
+    if (len(ARGV) < 1) {
+        usage
+        err "requires at least one argument"
+    }
+    case $[ARGV[0]] in
     usage)
         usage
     ;;
     build)
         shift 1
-        find_pkg "$1"
-        validate_package
-        construct_compiler_flags
-        setup_build_dir
-
-        time1=$(date +%s)
-        log "starting build in $build_dir"
-        env -i \
-            CC="$CC" \
-            CXX="$CXX" \
-            CFLAGS="$CFLAGS" \
-            CXXFLAGS="$CXXFLAGS" \
-            LDFLAGS="$LDFLAGS" \
-            PATH="$MPATH" \
-            ATA_TREE="$ATA_TREE" \
-            MAKEFLAGS="${MAKEFLAGS:--j10}" \
-            LD_LIBRARY_PATH="$ATA_TREE/$pkgname/lib" \
-            C_INCLUDE_PATH="${C_INCLUDE_PATH%:}"  \
-            PKG_CONFIG_PATH="${PKG_CONFIG_PATH%:}" \
-            _prefix="$ATA_TREE/$pkgname/usr" \
-            "$pkg_dir/build" "$destdir" "$pkgname"
-            
-        mkdir -p "$destdir/$ATA_TREE/$pkgname"
-        cp "$srcpkgfile" "$destdir/$ATA_TREE/$pkgname"
-        time2=$(date +%s)
-        s=$((time2 - time1))
-        log "build completed in ${s}s"
-        create_binary 
+        do_build (ARGV[1], &build)
+    ;;
+    fetch)
+        shift 1
+        do_fetch (ARGV[1])
     ;;
     scaffold)
         # Creates an empty ata package
         # Takes a name, version, and a source url, and generates an empty package in this directory.
         shift 1
-        name=${1:?no name provided}
-        version=${2:?no version provided}
-        pkgname="$name-$version"
-        if [ "$3" ]; then
-            checksum="$3 $(generate_checksum $3)" 
-        fi
-        [ -e "$pkgname.txtar" ] && err "package $pkgname already exists here"
+        call shape(ARGV, 4)
+        if (ARGV[1] === null) {
+            log 'usage: ata scaffold $name-$version [$url]'
+            err "name and version not provided"
+        }
+        var pkgname = ARGV[1]
+        if (pkgname !~ VALID) {
+            err "invalid package name: $pkgname"
+        }
+        
+        if (ARGV[2] !== null) {
+            var checksum = "$[ARGV[2]] $(generate_checksum $[ARGV[2]])" 
+        }
+        
+        test -e "$pkgname.txtar" && err "package $pkgname already exists here"
         cat << EOF > "$pkgname.txtar"
 -- build --
 #!/bin/sh -e
 -- sources --
-$checksum
+${checksum:-}
 -- version --
-$version
+$(version_from_name $pkgname)
 -- needs --
 EOF
     ;;
-    checksum)
-        shift 1 
-        find_pkg "$1"
+    add)
         shift 1
-        generate_checksum "$1"
-    ;;
-    install)
-        shift 1
-        find_pkg "$1"
-        
-        : "${XDG_CACHE_HOME:=$HOME/.local/cache}"
+        find_srcpkg (ARGV[1], &build)
     
-        pkgf="$XDG_CACHE_HOME/ata/$pkgname/built/ata-built-$pkgname.tar.gz"
+        var pkgf = "$[ENV.ATA_BINCACHE]/$[build.name].tar.xz" 
         
-        if ! [ -e "$pkgf" ] || [ "$ATA_SKIP_REBUILD" != 1 ]; then
-            log "archive $pkgf not found, building"
-            main build "$pkgname"
+        if ! test -e "$pkgf" || [ "$[ENV.ATA_SKIP_REBUILD]" != 1 ]; then
+            log "archive $pkgf not found, exiting"
+            exit 1
         fi
-        [ -e "$pkgf" ] || err "archive $pkgf not created"
-        log "found archive for $pkgname: $pkgf"
-        mkdir -p "$DESTDIR/$ATA_TREE/$pkgname"
-        log "installing to $DESTDIR$ATA_TREE/$pkgname"
-        tar xzf "$pkgf" -C "$DESTDIR/$ATA_TREE/$pkgname"
-        log "installed $pkgname"
+        log "found archive for $[build.name]: $pkgf"
+        mkdir -p "$ATA_TREE/$[build.name]"
+        log "installing to $ATA_TREE/$[build.name]"
+        tar xf "$pkgf" -C "$ATA_TREE/$[build.name]"
+        log "installed $[build.name]"
         
     ;;
-    resolve)
-        shift 1
-        find_pkg "$1"
-        p "$ATA_TREE/$pkgname"
-    ;;
-    world)
-        shift 1
-        # ata worlds are identified by a sha256 of their sorted worldfile, for now
-        # ata worlds are a /usr created from symlinking the contents several packages together
-        # this may, in future, be implemented via FUSE.
-        # worlds can be found in $ATA_WORLDS
-        # no dependency resolution is needed
-        case $1 in
-            build)
-                shift 1
-                [ -z "$1" ] && err "missing worldfile argument"
-                id=$(sort -u "$1" | sha256sum)
-                id=${id%% *}
-                if [ ! -d "$DESTDIR/$ATA_WORLDS/$id" ]; then
-                    log "building world $id"
-                    base="$ATA_WORLDS/$id"
-                    mkdir -p "$DESTDIR/$base"
-                    log "merging into $DESTDIR$base"
-                    while read -r pkg; do
-                        #[ -d "$DESTDIR/$ATA_TREE/$pkg" ] || err "$pkg not found"
-                        log "merging $pkg from $1"
-                        recursive_file_merge "$ATA_TREE/$pkg/usr" "$base" "$DESTDIR"
-                        
-                    done < "$1"
-                    log "world $id created"
-                else
-                    log "world $id exists, skipping"
-                fi
-            ;;
-            env)
-                shift 1
-                [ -z "$1" ] && err "missing worldfile argument"
-                cmd=$2
-                : "${cmd:=sh}"
-                main world build "$1"
-                # shell doesn't scope variables
-                env -i PATH="$ATA_WORLDS/$id/bin" "$ATA_WORLDS/$id/bin/$cmd"
-            ;;
-        esac
-    ;;
+    # I've temporarily cut away the "world" functionality,
+    # as it needs to be reworked in light of other functionality
     *)
         usage
         err "command $1 not implemented"
     ;;
     esac
 }
+
 main "$@"
