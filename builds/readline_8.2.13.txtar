@@ -18,8 +18,8 @@ https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.gz 0e5be4d2937e8bd9b7cd60d4
 -- version --
 8.2.13
 -- needs --
-toolchain:musl-cross-make-git.fd6be58
-libc:musl-1.2.5
-make-4.4.1
-busybox-1.36.1
-ncurses-6.5
+toolchain:musl-cross-make_git.fd6be58
+libc:musl_1.2.5
+make: make_4.4.1
+make: busybox_1.36.1
+lib: ncurses_6.5

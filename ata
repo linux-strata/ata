@@ -1,4 +1,4 @@
-#!/ata/pkg/oils-0.26.0/usr/bin/ysh
+#!/ata/pkg/oils_0.27.0/usr/bin/ysh
 
 # prototype #3
 
@@ -110,7 +110,6 @@ func shape(list, n, fill=null) {
     return (list)
 }
 
-
 func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
     if (get(d, k) === null) {
         setvar d[k] = b
@@ -203,8 +202,13 @@ proc find_srcpkg (;name, build) {
         
     } else {
         # otherwise, run a test
-        setvar path = :| $[ENV.ATA_SRC_REPO]/$name_*.txtar |[0]
+        #setvar path = :| $[ENV.ATA_SRC_REPO]/${name}_*.txtar |[0]
+        var c = []
+        
+        locate (name, ENV.ATA_SRC_REPO, &c)
+        setvar path = c[0]
     }
+
     read --all < $path
     setvar b = txtar_read(_reply.split(u'\n'))
     setvar b["name"] = path => trim(".txtar") => trimStart(/ .+'/' /)
@@ -232,6 +236,9 @@ copy_to () {
             tar xf "$1" --strip-components 1 -C "$2"
             # NB. --strip-components is not always present
         ;;
+        /files/*)
+            :
+        ;;
         *)
             if test -d "$1"; then
                 log "copying dir $1"
@@ -244,10 +251,17 @@ copy_to () {
     esac
 }
 
-proc generate_checksum (path) {
-    # outputs to stdout
-    case $path in
-        git*) 
+proc generate_checksum (path; build="") {
+    # TODO: UNDO EMBEDDING OF FILES 
+    log $path
+    if (path ~~ '/files/*') {
+        log 'embedded file, skipping'
+        p 'file'
+        return 0
+    }
+    
+    case $[path => split("/")[-1]] in
+        git:*) 
             p "git"
         ;;
         *)
@@ -266,11 +280,12 @@ proc download_src (;url, build, destination="") {
     case $url in
         git:*)
             # git:https://git.com/repo@commit
-            setvar url = ${url%@*}
-            setvar url = ${url#git:}
-            var commit = ${url#*@}
+            setvar url = url =>trimStart("git:") => split("@")
+            var commit = url[1]
+            setvar url = url[0]
+            
             setvar destination = $(filename_from_url "$url")
-            setvar destination = "${destination}@${commit}"
+            setvar destination = "git:${destination}@${commit}"
             if test -d "${dir}/${destination}" ; then
                 log "$destination already cloned, skipping"
             else
@@ -408,6 +423,7 @@ proc construct_compiler_flags (;build) {
                 ;;
                 make)
                     # Make dependencies are only needed at build time.
+                    # Should they be added to path? 
                     call build.meta->erase(dep)
                 
             esac
@@ -423,6 +439,13 @@ proc setup_build_dir (;build) {
     
     log "setting up build in $[build.builddir]"
     
+    
+    # todo: allow for packages to be split into individual files or txtars
+    # test -d it, check for a txtar inside
+    
+    # maybe?
+    
+    # Some files, like busybox config, are too large. 
     cd $[build.builddir]
     for line in (build.sources) {
         var x = line.split(" ") => shape(3, "")
@@ -458,6 +481,7 @@ proc do_build (;pkgname, build) {
     mkdir -p $pkg_dir
     cd $pkg_dir { txtar_unpack (build) }
     chmod +x "$pkg_dir/build"
+
     
     construct_compiler_flags (build)
     setup_build_dir (build)
@@ -467,8 +491,10 @@ proc do_build (;pkgname, build) {
     var env = []
     for k, v in (build.env) {
         call env->append("${k}=$[v.trimEnd(':')]")
-        log "${k}=$[v.trimEnd(':')]"
+        #log "${k}=$[v.trimEnd(':')]"
     }
+    
+    cp -r "$pkg_dir/files" "$tmp_base/build" ||: #stopgap 
     
     cd "$tmp_base/build" {
     env -i @env \
@@ -495,27 +521,70 @@ proc do_build (;pkgname, build) {
 
 }
 
+# procedure:
+# find package
+# read meta file
+# take list of deps
+# recurse.
+# keep a 'visited' set
+# conclude at the end of the list
+# skip if you've already visited the package
+# do_fetch (;pkgname, visited={})
+
 proc do_fetch(;pkgname) {
     # This doesn't take a 'var build'.
     # Search remote (local) repositories for packages, add them to /ata/repo.
     mkdir -p "/ata/repo"
-    locate (pkgname, ENV.ATA_BINCACHE)
+    var list = []
+    get_deps (pkgname, list)
+    
 }
 
-
-proc locate (;pkgname, dir) {
-    # This proc locates a package-appropriate filename within a directory.
-    # 'pkgname=musl' doesn't result in finding musl-cross-make.
-    # It sorts git packages above numbers, and orders numerically.
-    # A repository will not have multiple git packages, so it doesn't have git sorting logic.
-    # Used in `ata fetch` and `ata add`, as well as `find_srcpkg`. Contains selection logic?
-    # I'm just going to ban `_` in package names, and use `_` to deliminate pkg_version
-    var d = :| "$dir/$pkgname"* |
-    for f in (d) {
-        if ((f => trim("$dir/") => split("-")[:-1]) != $pkgname 
-             
+proc get_deps (;pkgname, deps) {
+    var f
+    var list
+    locate (pkgname, ENV.ATA_BINCACHE, &list)
+    if (list === []) {
+        err "Package $pkgname not found in binary cache $[ENV.ATA_BINCACHE]."
     }
+    var archive = list[0]
+    if (archive !~~ "*.tar.*") {
+        err "Package name is missing an archive."
+    }
+    var meta = archive => trimEnd(/'.tar.'.+/) ++ ".meta"
+    test -f $meta || err "Package lacks a metadata file."
+
+    read --all < $meta
+    for f in (_reply.split(u'\n')) {
+        $[f === ""] && continue
+        if (f ~~ "dep: *") {
+            setvar f = f=>trimStart("dep: ")
+            if (deps => indexOf(f) === -1 ) {
+                call deps->append(f)
+                get_deps (f, deps)
+            }
+        }
+        
+    }
+    json write (deps)
 }
+
+proc locate(;file, dir, list) {
+    var candidates = []
+    for f in "$dir/$file"* {
+        if (file !~ '_') {
+            if ( (f => trim("$dir/") => split("_")[:-1]) === [file] ) {
+                call candidates->append(f)
+            }
+        } elif ( (f => trim("$dir/")) ~~ "${file}.*" ) {
+                call candidates->append(f)
+        } 
+    }
+    call candidates->reverse()
+    call list->setValue(candidates)
+    # Shell iterates in lexographic order. We can get away with just reversing as a result.
+}
+
 
 main () {
     setglobal tmp_base = $(mktemp -dt ata-$$-XXXXXXXX)
