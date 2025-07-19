@@ -19,7 +19,7 @@
 # sources, which is a newline seperated set of source links
 # this file format is not stable. it will change in future
 
-# no dependency resolution at the moment 
+# some dependency resolution at the moment 
 
 
 nl='
@@ -46,6 +46,7 @@ err () {
     exit 1
 }
 
+# Wrap a string in a list, unless it is already a list.
 func W(list) {
     if (type(list) === "Str") {
         return ([list])
@@ -59,6 +60,44 @@ func default(d, k, v) {
     }
     return (d)
 }
+
+func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
+    if (get(d, k) === null) {
+        setvar d[k] = b
+    } else {
+        setvar d[k] = (d[k]++b)
+    }
+    return (d)
+}
+
+
+proc nth_component (n, string, delim=" ") {
+    p $[string.split (delim)[n]]
+}
+
+proc filename_from_url (url) {
+    nth_component -1 $url "/"
+}
+
+proc version_from_name (name) {
+    nth_component -1 $name "-"
+}
+
+# Bulk out a list with filler items.
+func shape(list, n, fill=null) {
+    if (n > len(list)) {
+        for _ in (len(list) ..< n) {
+            call list->append(fill)
+        }
+    }
+    return (list)
+}
+
+
+
+#func exactmatch(str, egg) {
+#
+#}
 
 var ATA_TREE = "/ata/pkg" # For now, this one isn't alterable.
 
@@ -89,71 +128,6 @@ The following commands are currently supported:
 EOF
 }
 
-proc nth_component (n, string, delim=" ") {
-    p $[string.split (delim)[n]]
-}
-
-proc filename_from_url (url) {
-    nth_component -1 $url "/"
-}
-
-proc version_from_name (name) {
-    nth_component -1 $name "-"
-}
-
-func shape(list, n, fill=null) {
-    if (n > len(list)) {
-        for _ in (len(list) ..< n) {
-            call list->append(fill)
-        }
-    }
-    return (list)
-}
-
-func sdd(d,k,b) { # the same as above, but with string defaults: 'String Dict Default'
-    if (get(d, k) === null) {
-        setvar d[k] = b
-    } else {
-        setvar d[k] = (d[k]++b)
-    }
-    return (d)
-}
-
-file_equal () {
-    # file_equal ( file1, file2 ) 
-    diff "$1" "$2" >/dev/null 2>&1
-
-}
-
-recursive_file_merge () {
-    # recursive_file_merge ( source, destination, [DESTDIR] )
-    # create a recursive link between two directories.
-    # mirror created directories, softlink files.
-    # This function is orphaned.
-    find "$3/$1" | while read -r abs; do
-        rel=${abs#"$3/$1"}
-        if [ -L "$abs" ]; then
-            ln -sf "$1$rel" "$3$2$rel"
-        else
-            [ -d "$abs" ] && mkdir -p "$3/$2/$rel"
-            [ -f "$abs" ] && ln -sf "$1$rel" "$3$2$rel"
-        fi
-    done
-    # NB. doesn't handle conflicts
-}
-
-is_dynamic () {
-    # is_dynamic ( file )
-    
-    case $(readelf -d "$1" 2>&1 | tail -n1) in
-        *"no dynamic"*)
-            return 1 ;;
-        *"Not an ELF"*)
-            return 1 ;;
-        *)
-            return 0 ;;
-    esac
-}
 
 # usage: read --all < ./xyz.txtar
 # txtar_read(_reply.split(u'\n'))
@@ -195,7 +169,11 @@ proc txtar_unpack (;txtar) {
 proc find_srcpkg (;name, build) {
     var b
     var path
+    # Because '~' is a partial match, package names with numbers will get detected 
+    # as having a version number in their name.
+    # Will need to produce an 'exactmatch' function.
     if (name => split('_')[-1] ~ /([0-9]+|'git')'.'*/) {
+        json write (name => split('_')[-1] )
         # Is the last component of the name a version number?
         # If so, take the package name verbatim
         setvar path = "$[ENV.ATA_SRC_REPO]/$name.txtar"
@@ -272,6 +250,7 @@ proc generate_checksum (path; build="") {
 }
 
 
+# This entire function is legacy shell.
 proc download_src (;url, build, destination="") {
     var dir="$[ENV.XDG_CACHE_HOME]/ata/src/$[build.name]"
     mkdir -p "$dir"
@@ -363,6 +342,8 @@ proc construct_compiler_flags (;build) {
             var mod = mod => trim()
             case $mod in
                 libc)
+                    # Manually specifying the libc package allows us to swap it out in future.
+                    # The 'libc' file/attribute contains the name of the dynamic C library.
                     if ("${libc:-}" !== '') {
                         err "libc set twice in $[build['name']]"
                     }
@@ -403,6 +384,12 @@ proc construct_compiler_flags (;build) {
                     setvar build.meta[dep] = ""
                 ;;
                 toolchain)
+                    # Toolchain packages represent the C compiler.
+                    # The 'toolchain' file/attribute contains the compiler triplet.
+                    # Ideally, toolchain packages should not produce a runtime dependency on them.
+                    # However, the project is not mature enough yet to guarantee this.
+                    # Static builds currently will have to manually specify they do not depend on
+                    # the toolchain at runtime.
                     if ("${toolchain:-}" !== '') {
                         err "toolchain set twice in $[build['name']]"
                     }
@@ -423,7 +410,11 @@ proc construct_compiler_flags (;build) {
                 ;;
                 make)
                     # Make dependencies are only needed at build time.
-                    # Should they be added to path? 
+                    # They're automatically added to the PATH, because it's more convenient.
+                    # Previous versions added every package to every single variable,
+                    # but this lead to environment pollution.
+                    # A small amount of pollution here is accepted for convenience.
+                    call sdd(build.env, 'PATH', "$ATA_TREE/$dep/usr/bin:")
                     call build.meta->erase(dep)
                 
             esac
@@ -504,6 +495,8 @@ proc do_build (;pkgname, build) {
             
     mkdir -p "$[build.destdir]/$ATA_TREE/$[build.name]"
     cp -r "$[build.path]" "$[build.destdir]/$ATA_TREE/$[build.name]"
+    
+    
     var time2 = $(date +%s)
     log "build completed in $[time2 - time1]s"
     

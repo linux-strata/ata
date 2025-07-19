@@ -9,9 +9,9 @@ export CFLAGS="$CFLAGS -static"
 make 
 make DESTDIR="$1" install
 -- needs --
-libc, toolchain: musl-cross-make_git.fd6be58
-busybox_1.36.1
-path, make: make_4.4.1
+libc, toolchain, make: musl-cross-make_git.fd6be58
+make: busybox_1.36.1
+make: make_4.4.1
 -- sources --
 https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
 -- version --

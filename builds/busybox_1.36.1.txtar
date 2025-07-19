@@ -14,10 +14,10 @@ make CONFIG_PREFIX="$1/$_prefix" install
 
 rm "$1/$_prefix/sbin"
 -- needs --
-libc:musl_1.2.5
-toolchain:musl-cross-make_git.fd6be58
-make,path: busybox_1.36.1
-make,path: make-4.4.1
+make, libc:musl_1.2.5
+make, toolchain:musl-cross-make_git.fd6be58
+make: busybox_1.36.1
+make: make-4.4.1
 -- version --
 1.36.1
 -- sources --
