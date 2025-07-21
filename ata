@@ -79,10 +79,6 @@ proc filename_from_url (url) {
     nth_component -1 $url "/"
 }
 
-proc version_from_name (name) {
-    nth_component -1 $name "-"
-}
-
 # Bulk out a list with filler items.
 func shape(list, n, fill=null) {
     if (n > len(list)) {
@@ -530,7 +526,7 @@ proc do_fetch(;pkgname) {
     mkdir -p "/ata/repo"
     var list = []
     get_deps (pkgname, list)
-    
+     
 }
 
 proc get_deps (;pkgname, deps) {
@@ -606,7 +602,7 @@ main () {
         shift 1
         call shape(ARGV, 4)
         if (ARGV[1] === null) {
-            log 'usage: ata scaffold $name-$version [$url]'
+            log 'usage: ata scaffold $name_$version [$url]'
             err "name and version not provided"
         }
         var pkgname = ARGV[1]
@@ -625,7 +621,7 @@ main () {
 -- sources --
 ${checksum:-}
 -- version --
-$(version_from_name $pkgname)
+$[pkgname.split("_")[-1]]
 -- needs --
 EOF
     ;;

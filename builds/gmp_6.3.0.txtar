@@ -1,15 +1,23 @@
 -- build --
 #!/bin/sh -e
 
+cp configfsf.guess config.guess
+cp configfsf.sub  config.sub
+
+export CC="$CC $CFLAGS $LDFLAGS"
+export CFLAGS=""
+export LDFLAGS=""
 ./configure \
-    --prefix=$ATA_TREE/$2/$3/usr
+    --prefix="$_prefix" \
 
 make
 make DESTDIR="$1" install
 -- sources --
 https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.gz e56fd59d76810932a0555aa15a14b61c16bed66110d3c75cc2ac49ddaa9ab24c 
 -- needs --
-libc:musl-cross-make/0.9.10
-toolchain:musl-cross-make/0.9.10
+libc, toolchain, make:musl-cross-make_git.fd6be58
+make: busybox_1.36.1
+make: make_4.4.1
+make: m4_1.4.19
 -- version --
 6.3.0

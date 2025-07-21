@@ -9,8 +9,10 @@ make DESTDIR="$1" install
 -- sources --
 https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.gz 116715552bd966c85b417c424db1bbdf639f53836eb361549d1f8d6ded5cb4c6 
 -- needs --
-libc:musl-cross-make-0.9.10
-toolchain:musl-cross-make-0.9.10
-gmp-6.3.0
+libc:musl-cross-make_git.fd6be58
+toolchain:musl-cross-make_git.fd6be58
+make: gmp_6.3.0
+make: make_4.4.1
+make: busybox_1.36.1
 -- version --
 4.2.1

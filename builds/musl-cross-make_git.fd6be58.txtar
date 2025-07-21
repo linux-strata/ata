@@ -3,8 +3,6 @@
 
 mv files/test.diff patches/gcc-11.2.0/0021-fix-linux-typesh.diff
 
-sh
-
 # COMMON_CONFIG += CC="x86_64-linux-musl-gcc -static --static" CXX="x86_64-linux-musl-g++ -static --static"
 cat > config.mak << EOF
 GCC_VER = 11.2.0
@@ -43,11 +41,11 @@ ld-musl-x86_64.so.1
 -- toolchain --
 x86_64-linux-musl
 -- needs --
-libc:musl-cross-make_git.fd6be58
-toolchain:musl-cross-make_git.fd6be58
-busybox_1.36.1
-make_4.4.1
-curl_8.10.1
+libc, make: musl_1.2.5
+toolchain: musl-cross-make_git.fd6be58
+make: busybox_1.36.1
+make: make_4.4.1
+make: curl_8.10.1
 -- version --
 git.fd6be58
 -- files/test.diff --
