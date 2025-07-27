@@ -1,6 +1,7 @@
 -- build --
 #!/bin/sh -e
 
+sed -i 's/long rlim_t/rlim_t/' include/sys/resource.h # fingers crossed
 ./configure \
     --prefix="$_prefix" \
     --libdir="$_prefix/lib" \

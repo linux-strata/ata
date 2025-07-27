@@ -230,7 +230,7 @@ proc generate_checksum (path; build="") {
     log $path
     if (path ~~ '/files/*') {
         log 'embedded file, skipping'
-        p 'file'
+        p ''
         return 0
     }
     
@@ -593,6 +593,7 @@ main () {
         do_build (ARGV[1], &build)
     ;;
     fetch)
+        # TODO: evaluate the fetch/add distinction.
         shift 1
         do_fetch (ARGV[1])
     ;;
@@ -626,6 +627,8 @@ $[pkgname.split("_")[-1]]
 EOF
     ;;
     add)
+        # Pretty much entirely legacy code.
+        # Long overdue for a rewrite.
         shift 1
         find_srcpkg (ARGV[1], &build)
     

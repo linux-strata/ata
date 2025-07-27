@@ -2,6 +2,7 @@
 #!/bin/sh -e
 
 mv files/test.diff patches/gcc-11.2.0/0021-fix-linux-typesh.diff
+mv files/test2.diff patches/musl-1.2.5
 
 # COMMON_CONFIG += CC="x86_64-linux-musl-gcc -static --static" CXX="x86_64-linux-musl-g++ -static --static"
 cat > config.mak << EOF
@@ -32,10 +33,10 @@ ln -sf x86_64-linux-musl-g++ "$1/$_prefix/bin/g++"
 find "$1" -name libgtkpeer.a  -exec rm -f {} +
 find "$1" -name libgjsmalsa.a -exec rm -f {} +
 find "$1" -name libgij.a      -exec rm -f {} +
-
 -- sources --
 git:https://github.com/richfelker/musl-cross-make@fd6be58 git
-files/test.diff file
+files/test.diff 
+files/test2.diff 
 -- libc --
 ld-musl-x86_64.so.1
 -- toolchain --
@@ -65,3 +66,17 @@ git.fd6be58
  #ifdef _GLIBCXX_HAVE_LINUX_RANDOM_H
  # include <linux/random.h>
  #endif
+-- files/test2.diff --
+diff --git a/include/sys/resource.h b/include/sys/resource.h
+index e8bfbe1f..2e046ede 100644
+--- a/include/sys/resource.h
++++ b/include/sys/resource.h
+@@ -17,7 +17,7 @@ extern "C" {
+ #include <bits/alltypes.h>
+ #include <bits/resource.h>
+ 
+-typedef unsigned long long rlim_t;
++typedef unsigned long rlim_t;
+ 
+ struct rlimit {
+ 	rlim_t rlim_cur;
