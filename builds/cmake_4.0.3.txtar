@@ -1,0 +1,25 @@
+-- build --
+#!/bin/sh
+
+# I don't have expat packaged yet.
+./configure \
+    --prefix=$ \
+    --system-curl \
+    --system-zlib \
+    --system-bzip2 \
+    --system-libarchive
+
+sh
+make
+make DESTDIR="$1" install
+-- sources -- 
+https://cmake.org/files/cmake-4.0.3.tar.gz 8d3537b7b7732660ea247398f166be892fe6131d63cc291944b45b91279f3ffb
+-- needs --
+libc: musl_1.2.5
+toolchain: musl-cross-make_git.fd6be58
+lib: bzip2_1.0.8
+lib: libarchive_3.7.7
+lib: curl_8.10.1
+lib: zlib_1.3.1
+make: make_4.4.1
+make: busybox_1.36.1
