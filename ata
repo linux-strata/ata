@@ -105,6 +105,7 @@ call default (ENV, "ATA_SKIP_REBUILD", 1)
 call default (ENV, "ATA_REPO", "/ata/repo")
 call default (ENV, "ATA_BINCACHE", "$[ENV.XDG_CACHE_HOME]/ata/built")
 call default (ENV, "ATA_ISOLATED_BUILD", 0)
+call default (ENV, "MAKEFLAGS", "-j20")
 
 setglobal SRCPKG_SUFFIX = ".txtar"
 
@@ -308,7 +309,8 @@ proc construct_compiler_flags (;build) {
     call   sdd(build.env, 'CFLAGS',   flags) \
         => sdd('CXXFLAGS', flags) \
         => sdd('LDFLAGS',  flags) \
-        => sdd('LD_LIBRARY_PATH', rpath)
+        => sdd('LD_LIBRARY_PATH', rpath) \
+        => sdd('MAKEFLAGS', ENV.MAKEFLAGS)
 
     # build.meta represents runtime dependencies.    
     setvar build["meta"] = {}
@@ -355,7 +357,7 @@ proc construct_compiler_flags (;build) {
                       "-Wl,-dynamic-linker,$ATA_TREE/$1/usr/lib/$libc " ++ \
                       "-isystem $ATA_TREE/$dep/usr/include "
                     ) \
-                    => sdd(
+                    => sdd( \
                       'LDFLAGS',
                       "-Wl,-dynamic-linker,$ATA_TREE/$dep/usr/lib/$libc "
                     ) \
@@ -529,6 +531,7 @@ proc do_fetch(;pkgname) {
      
 }
 
+# -j
 proc get_deps (;pkgname, deps) {
     var f
     var list
